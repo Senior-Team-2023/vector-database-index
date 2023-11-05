@@ -14,19 +14,31 @@ class VecDBWorst:
     def insert_records(self, rows: List[Dict[int, Annotated[List[float], 70]]]):
         # rows is a list of dictionary, each dictionary is a record
         with open(self.file_path, "a+") as fout:
+            # TODO: keep track of the last id in the database,
+            # to start the new index from it, if the database is not empty,
+            # and if the index algorithm requires it
             for row in rows:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
                 # convert row to string to write it to the database file
+                # TODO: Convert str(e) to bytes to reduce the size of the file
+                # float should be 4 bytes, but str(e) is more than that
+                # TODO: try to take info from the embed, so you can use it to build the index
                 row_str = f"{id}," + ",".join([str(e) for e in embed])
                 fout.write(f"{row_str}\n")
+        # build index after inserting all records,
+        # whether on new records only or on the whole database
         self._build_index()
 
-    # access database to retrive top_k records according to query
+    # Worst case implementation for retrieve
+    # Because it is sequential search
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
+        # TODO: for our implementation, we will use the index to retrieve the top_k records
+        # then retrieve the actual records from the database
         scores = []
         # open database file to read
         with open(self.file_path, "r") as fin:
+            # search through the file line by line (sequentially)
             # each row is a record
             for row in fin.readlines():
                 row_splits = row.split(",")
@@ -51,4 +63,5 @@ class VecDBWorst:
         return cosine_similarity
 
     def _build_index(self):
+        # TODO: build index for the database
         pass
