@@ -1,15 +1,15 @@
 from typing import Dict, List, Annotated
 import numpy as np
 
+
 class VecDBWorst:
-    def __init__(self, file_path = "saved_db.csv", new_db = True) -> None:
+    def __init__(self, file_path="saved_db.csv", new_db=True) -> None:
         self.file_path = file_path
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
                 # if you need to add any head to the file
                 pass
-    
 
     def insert_records(self, rows: List[Dict[int, Annotated[List[float], 70]]]):
         # rows is a list of dictionary, each dictionary is a record
@@ -23,7 +23,7 @@ class VecDBWorst:
         self._build_index()
 
     # access database to retrive top_k records according to query
-    def retrive(self, query: Annotated[List[float], 70], top_k = 5):
+    def retrive(self, query: Annotated[List[float], 70], top_k=5):
         scores = []
         # open database file to read
         with open(self.file_path, "r") as fin:
@@ -39,10 +39,10 @@ class VecDBWorst:
                 scores.append((score, id))
         # here we assume that if two rows have the same score, return the lowest ID
         # sort and get the top_k records
-        scores = sorted(scores)[:top_k]
+        scores = sorted(scores, reverse=True)[:top_k]
         # return the ids of the top_k records
         return [s[1] for s in scores]
-    
+
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
         norm_vec1 = np.linalg.norm(vec1)
@@ -52,5 +52,3 @@ class VecDBWorst:
 
     def _build_index(self):
         pass
-
-
