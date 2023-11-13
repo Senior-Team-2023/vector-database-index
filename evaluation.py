@@ -1,5 +1,6 @@
 import numpy as np
 from worst_case_implementation import VecDBWorst
+from lsh_random_projection import VecDBLSH
 import time
 from dataclasses import dataclass
 from typing import List
@@ -53,6 +54,13 @@ def eval(results: List[Result]):
         run_time.append(res.run_time)
         # case for retireving number not equal to top_k, socre will be the lowest
         if len(set(res.db_ids)) != res.top_k or len(res.db_ids) != res.top_k:
+            print(
+                "Wrong number of records retrieved, expected",
+                res.top_k,
+                "got",
+                len(res.db_ids),
+                "records",
+            )
             scores.append(-1 * len(res.actual_ids) * res.top_k)
             continue
         score = 0
@@ -60,8 +68,12 @@ def eval(results: List[Result]):
             try:
                 ind = res.actual_ids.index(id)
                 if ind > res.top_k * 3:
+                    # print(
+                    # "ID not in top_k,", "id", id, "index", ind, "top_k", res.top_k
+                    # )
                     score -= ind
             except:
+                # print("ID not in actual_ids", id)
                 score -= len(res.actual_ids)
         scores.append(score)
 
@@ -70,8 +82,10 @@ def eval(results: List[Result]):
 
 if __name__ == "__main__":
     db = VecDBWorst()
+    # db = VecDBLSH()
     # generate random records
-    records_np = np.random.random((100, 70))
+    np.random.seed(42)  # set seed value for random number generator
+    records_np = np.random.random((1000000, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
     _len = len(records_np)
