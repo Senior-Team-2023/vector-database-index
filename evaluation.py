@@ -2,6 +2,7 @@ import numpy as np
 from worst_case_implementation import VecDBWorst
 from lsh_random_projection import VecDBLSH
 from buckets_hnsw import VecDB_buckets_HNSW
+from hnsw import VecDB_hnsw
 import time
 from dataclasses import dataclass
 from typing import List
@@ -84,7 +85,8 @@ def eval(results: List[Result]):
 if __name__ == "__main__":
     # db = VecDBWorst()
     # db = VecDBLSH()
-    db = VecDB_buckets_HNSW()
+    # db = VecDB_buckets_HNSW()
+    db = VecDB_hnsw()
     # generate random records
     np.random.seed(42)  # set seed value for random number generator
     records_np = np.random.random((100000, 70))
