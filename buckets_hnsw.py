@@ -62,7 +62,7 @@ class VecDB_buckets_HNSW:
         print("distances", distances)
         print("labels", labels)
         # calculate the score for each vector in the bucket
-        print("Calculating score for each vector in the bucket...")
+        print("Calculating score...")
         scores = [(distances[0][i], labels[0][i]) for i in range(len(labels[0]))]
         scores = sorted(scores)[:top_k]
         # return the ids of the top_k records
