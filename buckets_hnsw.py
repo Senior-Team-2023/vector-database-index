@@ -53,13 +53,11 @@ class VecDB_buckets_HNSW:
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
         # load bucket from file
-        print(f"Loading corresponding bucket {query_binary_str}...")
+        print(f"Loading corresponding HNSW index {query_binary_str}...")
         try:
-            bucket = self._load_buckets(query_binary_str)
             loaded_index = faiss.read_index(f"./index/{query_binary_str}.csv.index")
         except FileNotFoundError:
-            print(f"Bucket {query_binary_str} not found")
-            bucket = []
+            print(f"HNSW index {query_binary_str} not found")
         distances, labels = loaded_index.search(query, top_k)
         print("distances", distances)
         print("labels", labels)
