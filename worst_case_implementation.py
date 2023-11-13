@@ -52,6 +52,7 @@ class VecDBWorst:
         # here we assume that if two rows have the same score, return the lowest ID
         # sort and get the top_k records
         scores = sorted(scores, reverse=True)[:top_k]
+        # print(scores)
         # return the ids of the top_k records
         return [s[1] for s in scores]
 
