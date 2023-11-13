@@ -1,6 +1,7 @@
 import numpy as np
 from worst_case_implementation import VecDBWorst
 from lsh_random_projection import VecDBLSH
+from buckets_hnsw import VecDB_buckets_HNSW
 import time
 from dataclasses import dataclass
 from typing import List
@@ -81,11 +82,12 @@ def eval(results: List[Result]):
 
 
 if __name__ == "__main__":
-    db = VecDBWorst()
+    # db = VecDBWorst()
     # db = VecDBLSH()
+    db = VecDB_buckets_HNSW()
     # generate random records
     np.random.seed(42)  # set seed value for random number generator
-    records_np = np.random.random((1000000, 70))
+    records_np = np.random.random((100000, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
     _len = len(records_np)
