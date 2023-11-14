@@ -3,6 +3,10 @@ from worst_case_implementation import VecDBWorst
 from lsh_random_projection import VecDBLSH
 from buckets_hnsw import VecDB_buckets_HNSW
 from hnsw import VecDB_hnsw
+
+# from OPQ32_IVF4096_HNSW_PQ32 import VecDB_OPQ32_IVF4096_HNSW_PQ32
+# from IVF_HNSW import VecDB_ivf_hnsw
+from ivf_pq import VecDB_ivf_pq
 import time
 from dataclasses import dataclass
 from typing import List
@@ -86,10 +90,13 @@ if __name__ == "__main__":
     # db = VecDBWorst()
     # db = VecDBLSH()
     # db = VecDB_buckets_HNSW()
-    db = VecDB_hnsw()
+    # db = VecDB_hnsw()
+    # db = VecDB_OPQ32_IVF4096_HNSW_PQ32()
+    # db = VecDB_ivf_hnsw()
+    db = VecDB_ivf_pq()
     # generate random records
     np.random.seed(42)  # set seed value for random number generator
-    records_np = np.random.random((100000, 70))
+    records_np = np.random.random((1000000, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
     _len = len(records_np)
