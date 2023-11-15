@@ -1,6 +1,7 @@
 from typing import Dict, List, Annotated
 import numpy as np
 import faiss
+from memory_profiler import profile
 
 
 class VecDB_ivf_pq:
@@ -34,6 +35,7 @@ class VecDB_ivf_pq:
 
     # Worst case implementation for retrieve
     # Because it is sequential search
+    @profile
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         # TODO: for our implementation, we will use the index to retrieve the top_k records
         # then retrieve the actual records from the database
@@ -76,8 +78,8 @@ class VecDB_ivf_pq:
 
     def _ivf_pq_index(self, data):
         # Create an index with ID support
-        # index = faiss.index_factory(self.d, "IVF256,PQ70x8")
-        index = faiss.index_factory(self.d, "IVF4096_HNSW,PQ35")
+        index = faiss.index_factory(self.d, "IVF256,PQ70x8")
+        # index = faiss.index_factory(self.d, "IVF256_HNSW,PQ35")
         xb = np.array([x[1] for x in data])
         ids = np.array([x[0] for x in data])
 

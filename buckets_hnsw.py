@@ -2,6 +2,7 @@ import os
 from typing import Dict, List, Annotated
 import numpy as np
 import faiss
+from memory_profiler import profile
 
 
 class VecDB_buckets_HNSW:
@@ -41,6 +42,7 @@ class VecDB_buckets_HNSW:
 
     # Worst case implementation for retrieve
     # Because it is sequential search
+    @profile
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         # TODO: for our implementation, we will use the index to retrieve the top_k records
         # then retrieve the actual records from the database
@@ -102,6 +104,7 @@ class VecDB_buckets_HNSW:
                 embed = np.array(embed)
                 # calculate the dot product for each of these
                 # to get the binary vector from the hyperplanes
+
                 embed_dot = self._calc_binary_vec(embed)
                 # vectors.append((id, embed_dot, embed))
                 # --- 2. bucketing ---
