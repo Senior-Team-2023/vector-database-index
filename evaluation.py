@@ -1,12 +1,14 @@
 import numpy as np
 from worst_case_implementation import VecDBWorst
-from lsh_random_projection import VecDBLSH
+
+# from lsh_random_projection import VecDBLSH
 from buckets_hnsw import VecDB_buckets_HNSW
-from hnsw import VecDB_hnsw
+
+# from hnsw import VecDB_hnsw
 
 # from OPQ32_IVF4096_HNSW_PQ32 import VecDB_OPQ32_IVF4096_HNSW_PQ32
 # from IVF_HNSW import VecDB_ivf_hnsw
-from ivf_pq import VecDB_ivf_pq
+# from ivf_pq import VecDB_ivf_pq
 import time
 from dataclasses import dataclass
 from typing import List
