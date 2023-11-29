@@ -98,7 +98,7 @@ if __name__ == "__main__":
     # db = VecDB_ivf_pq()
     # generate random records
     np.random.seed(42)  # set seed value for random number generator
-    records_np = np.random.random((10, 70))
+    records_np = np.random.random((10000, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
     _len = len(records_np)
