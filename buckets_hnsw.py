@@ -49,7 +49,7 @@ class VecDB_buckets_HNSW:
         # print(query)
         print("Retrieving...")
         print("Calculating binary vector of query...")
-        query_binary_vec = self._calc_binary_vec(query)
+        query_binary_vec = self._calc_binary_vec(query, self._plane_norms)
         # print(query_binary_vec)
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
@@ -85,7 +85,7 @@ class VecDB_buckets_HNSW:
         # create a set of nbits hyperplanes, with d dimensions
         self._plane_norms = np.random.rand(nbits, self.d) - 0.5
         # store the hyperplanes in a file
-        self._save_hyperplanes("hyperplanes", self._plane_norms)
+        self._save_hyperplanes("hyperplane0", self._plane_norms)
         # vectors = []
         # open database file to read
         buckets = {}
@@ -103,7 +103,76 @@ class VecDB_buckets_HNSW:
                 # ---------Do random projection---------
                 # calculate the dot product for each of these
                 # to get the binary vector from the hyperplanes
-                embed_dot = self._calc_binary_vec(embed)
+                embed_dot = self._calc_binary_vec(embed, self._plane_norms)
+                # vectors.append((id, embed_dot, embed))
+                # --- 2. bucketing ---
+                # convert from array to string
+                # to get the binary value of the vector as a string
+                hash_str = "".join(embed_dot.astype(str))
+                # create bucket if it doesn't exist
+                if hash_str not in buckets.keys():
+                    buckets[hash_str] = []
+                # add vector position to bucket
+                # all vectors that has the same binary value will be in the same bucket
+                # append only the id and the embed, not the binary value
+                buckets[hash_str].append((id, embed))
+
+        # save the parent database
+        self._save_buckets(buckets, 0)  # save for any bucket
+        # loop over the buckets
+        # loop over the buckets
+        for k, v in buckets.items():
+            # inside the stop codition, to build the index
+            # stop condition:
+            # min number of records inside the bucket is 5
+            # similarity measure (cosine similarity) among all the records inside the bucket >= 0.7
+            # if the stop condition is not met, build the index for each bucket
+            # for (_,vector) in v:
+            vectors = [e[1] for e in v]
+            vectors = np.array(vectors)
+            norm_product = 1
+            dot_product = np.ones(vectors[0].shape)
+            for i in range(len(vectors)):
+                norm_product = norm_product * np.linalg.norm(vectors[i])
+                dot_product = dot_product * vectors[i]
+
+            dot_product = np.sum(dot_product)
+            # print("norm_product",norm_product)
+            # print("dot_product",dot_product)
+            cosine_similarity = dot_product / (norm_product)
+            print("cosine_similarity", cosine_similarity)
+            if len(v) <= 5 or cosine_similarity >= 0.5:
+                self._HNSW_build_index(f"{k}_{str(0)}.csv")
+            else:
+                self._build_bucket_index(f"{k}_{str(0)}.csv", 1)
+
+    def _build_bucket_index(self, filename: str, lvl: int):
+        # TODO: build index for the database
+        print("Building index...")
+        # ---- 1. random projection ----
+        nbits = 4  # number of hyperplanes and binary vals to produce
+        # create a set of nbits hyperplanes, with d dimensions
+        _plane_norms = np.random.rand(nbits, self.d) - 0.5
+        # store the hyperplanes in a file
+        self._save_hyperplanes("hyperplane_" + filename + "_" + str(lvl), _plane_norms)
+        # vectors = []
+        # open database file to read
+        buckets = {}
+        with open(f"./index/{filename}", "r") as fin:
+            # search through the file line by line (sequentially)
+            # each row is a record
+            for row in fin.readlines():
+                row_splits = row.split(",")
+                # the first element is id
+                id = int(row_splits[0])
+                # the rest are embed
+                embed = [float(e) for e in row_splits[1:]]
+                embed = np.array(embed)
+
+                # ---------Do random projection---------
+                # calculate the dot product for each of these
+                # to get the binary vector from the hyperplanes
+                embed_dot = self._calc_binary_vec(embed, _plane_norms)
                 # vectors.append((id, embed_dot, embed))
                 # --- 2. bucketing ---
                 # convert from array to string
@@ -120,32 +189,56 @@ class VecDB_buckets_HNSW:
         # print(buckets)
         # save buckets to files
         print("Saving buckets...")
-        self._save_buckets(buckets)
-        self._HNSW_build_index()
+        self._save_buckets(buckets, lvl)  # save for any bucket
 
-    def _HNSW_build_index(self):
+        # loop over the buckets
+        for k, v in buckets.items():
+            # inside the stop codition, to build the index
+            # stop condition:
+            # min number of records inside the bucket is 5
+            # similarity measure (cosine similarity) among all the records inside the bucket >= 0.7
+            # if the stop condition is not met, build the index for each bucket
+            # for (_,vector) in v:
+            vectors = [e[1] for e in v]
+            vectors = np.array(vectors)
+            norm_product = 1
+            dot_product = np.ones(vectors[0].shape)
+            for i in range(len(vectors)):
+                norm_product = norm_product * np.linalg.norm(vectors[i])
+                dot_product = dot_product * vectors[i]
+
+            dot_product = np.sum(dot_product)
+            cosine_similarity = dot_product / (norm_product)
+            # print("norm_product",norm_product)
+            # print("dot_product",dot_product)
+            # print(cosine_similarity)
+            if len(v) <= 5 or cosine_similarity >= 0.5:
+                self._HNSW_build_index(f"{k}_{str(lvl)}.csv")
+            else:
+                self._build_bucket_index(f"{k}_{str(lvl)}.csv", lvl + 1)
+
+    def _HNSW_build_index(self, filename: str):
         # open each file inside the index folder
-        for filename in os.listdir("./index"):
-            if filename.endswith(".csv"):
-                bucket_rec = []
-                with open(f"./index/{filename}", "r") as fin:
-                    for row in fin.readlines():
-                        row_splits = row.split(",")
-                        # the first element is id
-                        id = int(row_splits[0])
-                        # the rest are embed
-                        embed = [float(e) for e in row_splits[1:]]
-                        embed = np.array(embed)
-                        bucket_rec.append((id, embed))
-                    # build the HNSW index
-                    # bucket_rec = np.array(bucket_rec)
-                    self._HNSW_index(
-                        data=bucket_rec,
-                        m=128,
-                        ef_construction=200,
-                        ef_search=32,
-                        filename=filename,
-                    )
+        if filename.endswith(".csv"):
+            bucket_rec = []
+            with open(f"./index/{filename}", "r") as fin:
+                for row in fin.readlines():
+                    row_splits = row.split(",")
+                    # the first element is id
+                    id = int(row_splits[0])
+                    # the rest are embed
+                    embed = [float(e) for e in row_splits[1:]]
+                    embed = np.array(embed)
+                    bucket_rec.append((id, embed))
+                # build the HNSW index
+                # bucket_rec = np.array(bucket_rec)
+                self._HNSW_index(
+                    data=bucket_rec,
+                    m=128,
+                    ef_construction=200,
+                    ef_search=32,
+                    filename=filename,
+                )
 
     def _HNSW_index(self, data, m, ef_construction, filename, ef_search):
         index = faiss.IndexHNSWFlat(self.d, m)
@@ -161,16 +254,17 @@ class VecDB_buckets_HNSW:
         faiss.write_index(id_map, f"./index/{filename}.index")
 
     def _save_hyperplanes(self, filename, plane_norms):
-        with open(f"{filename}.csv", "w") as fout:
+        with open(f"./hyperplanes/{filename}.csv", "w") as fout:
             for plane in plane_norms:
                 fout.write(",".join([str(e) for e in plane]))
                 fout.write("\n")
 
-    def _save_buckets(self, buckets):
+    def _save_buckets(self, buckets, lvl: int):
         for key, value in buckets.items():
-            with open(f"./index/{key}.csv", "w") as fout:
+            with open(f"./index/{key}_{lvl}.csv", "w") as fout:
                 # fout.write(",".join(str(e) for e in value))
                 # print(value)
+                # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
                 for e in value:
                     fout.write(str(e[0]) + "," + ",".join(str(t) for t in e[1]))
                     fout.write("\n")
@@ -194,8 +288,8 @@ class VecDB_buckets_HNSW:
         return buckets
 
     # Calculate random projection and return binary vector
-    def _calc_binary_vec(self, embed):
-        embed_dot = np.dot(embed, self._plane_norms.T)
+    def _calc_binary_vec(self, embed, plane_norms):
+        embed_dot = np.dot(embed, plane_norms.T)
         # we know that a positive dot product == +ve side of hyperplane
         # and negative dot product == -ve side of hyperplane
         embed_dot = embed_dot > 0
