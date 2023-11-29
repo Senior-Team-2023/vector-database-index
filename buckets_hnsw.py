@@ -10,6 +10,7 @@ class VecDB_buckets_HNSW:
     def __init__(self, file_path="saved_db.csv", new_db=True) -> None:
         self.file_path = file_path
         self.d = 70  # vector dimensions
+        self.max_levels = 0
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -53,6 +54,25 @@ class VecDB_buckets_HNSW:
         # print(query_binary_vec)
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
+
+        # load the hyperplane from file
+        leaf_level = 0
+        for i in range(self.max_levels):
+            try:
+                # load hyperplanes based on bucket key and level
+                loaded_hyperplane = self._load_hyperplanes(
+                    f"hyperplane_{query_binary_str}_{i}"
+                )
+                query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+                query_binary_str = "".join(query_binary_vec[0].astype(str))
+            except FileNotFoundError:
+                print(f"Hyperplane {query_binary_str} not found")
+                leaf_level = i
+                break
+
+        query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+        query_binary_str = "".join(query_binary_vec[0].astype(str))
+
         # load bucket from file
         print(f"Loading corresponding HNSW index {query_binary_str}...")
         try:
@@ -154,7 +174,7 @@ class VecDB_buckets_HNSW:
         # create a set of nbits hyperplanes, with d dimensions
         _plane_norms = np.random.rand(nbits, self.d) - 0.5
         # store the hyperplanes in a file
-        self._save_hyperplanes("hyperplane_" + filename + "_" + str(lvl), _plane_norms)
+        self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
         # vectors = []
         # open database file to read
         buckets = {}
@@ -213,6 +233,10 @@ class VecDB_buckets_HNSW:
             # print("dot_product",dot_product)
             # print(cosine_similarity)
             if len(v) <= 5 or cosine_similarity >= 0.5:
+                # update the max level
+                if lvl > self.max_levels:
+                    self.max_levels = lvl
+
                 self._HNSW_build_index(f"{k}_{str(lvl)}.csv")
             else:
                 self._build_bucket_index(f"{k}_{str(lvl)}.csv", lvl + 1)
