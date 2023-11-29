@@ -68,8 +68,10 @@ class VecDB_buckets_HNSW:
                 )
                 # TODO: Doaa Achraf (Dodo)
                 query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
-                prev_query_binary_str = query_binary_str
+                
                 query_binary_str = "".join(query_binary_vec[0].astype(str))
+
+                prev_query_binary_str = query_binary_str
             except FileNotFoundError:
                 print(f"Hyperplane {query_binary_str} not found, i = {i}")
                 if i == 0:
