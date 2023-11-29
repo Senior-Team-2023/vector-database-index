@@ -2,7 +2,8 @@ import os
 from typing import Dict, List, Annotated
 import numpy as np
 import faiss
-from memory_profiler import profile
+
+# from memory_profiler import profile
 
 
 class VecDB_buckets_HNSW:
@@ -40,9 +41,7 @@ class VecDB_buckets_HNSW:
         # whether on new records only or on the whole database
         self._build_index()
 
-    # Worst case implementation for retrieve
-    # Because it is sequential search
-    @profile
+    # @profile
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         # TODO: for our implementation, we will use the index to retrieve the top_k records
         # then retrieve the actual records from the database
@@ -84,11 +83,9 @@ class VecDB_buckets_HNSW:
         # ---- 1. random projection ----
         nbits = 4  # number of hyperplanes and binary vals to produce
         # create a set of nbits hyperplanes, with d dimensions
-        plane_norms = np.random.rand(nbits, self.d) - 0.5
+        self._plane_norms = np.random.rand(nbits, self.d) - 0.5
         # store the hyperplanes in a file
-        self._save_hyperplanes(plane_norms)
-        # save the hyperplanes to the class
-        self._plane_norms = plane_norms
+        self._save_hyperplanes("hyperplanes", self._plane_norms)
         # vectors = []
         # open database file to read
         buckets = {}
@@ -102,9 +99,10 @@ class VecDB_buckets_HNSW:
                 # the rest are embed
                 embed = [float(e) for e in row_splits[1:]]
                 embed = np.array(embed)
+
+                # ---------Do random projection---------
                 # calculate the dot product for each of these
                 # to get the binary vector from the hyperplanes
-
                 embed_dot = self._calc_binary_vec(embed)
                 # vectors.append((id, embed_dot, embed))
                 # --- 2. bucketing ---
@@ -162,8 +160,8 @@ class VecDB_buckets_HNSW:
         # save the index
         faiss.write_index(id_map, f"./index/{filename}.index")
 
-    def _save_hyperplanes(self, plane_norms):
-        with open("hyperplanes.csv", "w") as fout:
+    def _save_hyperplanes(self, filename, plane_norms):
+        with open(f"{filename}.csv", "w") as fout:
             for plane in plane_norms:
                 fout.write(",".join([str(e) for e in plane]))
                 fout.write("\n")
@@ -177,9 +175,9 @@ class VecDB_buckets_HNSW:
                     fout.write(str(e[0]) + "," + ",".join(str(t) for t in e[1]))
                     fout.write("\n")
 
-    def _load_hyperplanes(self):
+    def _load_hyperplanes(self, filename):
         plane_norms = []
-        with open("hyperplanes.csv", "r") as fin:
+        with open(f"{filename}.csv", "r") as fin:
             for line in fin.readlines():
                 plane_norm = line.split(",")
                 plane_norm = [float(e) for e in plane_norm]
@@ -195,6 +193,7 @@ class VecDB_buckets_HNSW:
                 buckets.append((int(bucket[0]), bucket[1:]))
         return buckets
 
+    # Calculate random projection and return binary vector
     def _calc_binary_vec(self, embed):
         embed_dot = np.dot(embed, self._plane_norms.T)
         # we know that a positive dot product == +ve side of hyperplane
