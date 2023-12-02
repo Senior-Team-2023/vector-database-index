@@ -66,21 +66,23 @@ class VecDB_buckets_HNSW:
                 loaded_hyperplane = self._load_hyperplanes(
                     f"hyperplane_{query_binary_str}_{i}"
                 )
-                # TODO: Doaa Achraf (Dodo)
-                query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
-                
-                query_binary_str = "".join(query_binary_vec[0].astype(str))
 
+                query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+
+                query_binary_str = "".join(query_binary_vec[0].astype(str))
+                # this holds the query binary str of the parent bucket
                 prev_query_binary_str = query_binary_str
             except FileNotFoundError:
                 print(f"Hyperplane {query_binary_str} not found, i = {i}")
                 if i == 0:
+                    # if the hyperplane of the first level is not found, so take the hyperplane of the first bucket
                     loaded_hyperplane = self._plane_norms
                 else:
                     loaded_hyperplane = self._load_hyperplanes(
                         f"hyperplane_{prev_query_binary_str}_{i-1}"
                     )
                 leaf_level = i
+                # 34an no5rog mn al loop b3d ma nla2y al hyperplane
                 break
 
         query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
@@ -165,18 +167,25 @@ class VecDB_buckets_HNSW:
             # for (_,vector) in v:
             vectors = [e[1] for e in v]
             vectors = np.array(vectors)
-            norm_product = 1
-            dot_product = np.ones(vectors[0].shape)
-            for i in range(len(vectors)):
-                norm_product = norm_product * np.linalg.norm(vectors[i])
-                dot_product = dot_product * vectors[i]
+            vectors_mean = np.mean(vectors, axis=0)
+            # norm_product = 1
+            # dot_product = np.ones(vectors[0].shape)
+            # for i in range(len(vectors)):
+            #     norm_product = norm_product * np.linalg.norm(vectors[i])
+            #     dot_product = dot_product * vectors[i]
 
-            dot_product = np.sum(dot_product)
+            # dot_product = np.sum(dot_product)
+            # calculate the cosine similarity between the mean vector and all the vectors in the bucket and get the max
+            cosine_similarity = np.mean(
+                [self._cal_score(vectors_mean, vector) for vector in vectors]
+            )
+
             # print("norm_product",norm_product)
             # print("dot_product",dot_product)
-            cosine_similarity = dot_product / (norm_product)
+            # cosine_similarity = dot_product / (norm_product)
+            # TODO: Tune the threshold (e.g. 0.9) to get the best results
             print("cosine_similarity", cosine_similarity)
-            if len(v) <= 5 or cosine_similarity >= 0.5:
+            if len(v) <= 5 or cosine_similarity >= 0.9:
                 self._HNSW_build_index(f"{k}_{str(0)}.csv")
             else:
                 self._build_bucket_index(f"{k}_{str(0)}.csv", 1)
@@ -236,18 +245,26 @@ class VecDB_buckets_HNSW:
             # for (_,vector) in v:
             vectors = [e[1] for e in v]
             vectors = np.array(vectors)
-            norm_product = 1
-            dot_product = np.ones(vectors[0].shape)
-            for i in range(len(vectors)):
-                norm_product = norm_product * np.linalg.norm(vectors[i])
-                dot_product = dot_product * vectors[i]
+            # norm_product = 1
+            vectors_mean = np.mean(vectors, axis=0)
 
-            dot_product = np.sum(dot_product)
-            cosine_similarity = dot_product / (norm_product)
+            # calculate the cosine similarity between the mean vector and all the vectors in the bucket and get the max
+            cosine_similarity = np.mean(
+                [self._cal_score(vectors_mean, vector) for vector in vectors]
+            )
+
+            # dot_product = np.ones(vectors[0].shape)
+            # for i in range(len(vectors)):
+            #     norm_product = norm_product * np.linalg.norm(vectors[i])
+            #     dot_product = dot_product * vectors[i]
+            # mean of the vectors
+            # dot_product = np.sum(dot_product)
+            # cosine_similarity = dot_product / (norm_product)
             # print("norm_product",norm_product)
             # print("dot_product",dot_product)
-            # print(cosine_similarity)
-            if len(v) <= 5 or cosine_similarity >= 0.5:
+            print("cosine_similarity", cosine_similarity)
+
+            if len(v) <= 5 or cosine_similarity >= 0.9:
                 # update the max level
                 if lvl > self.max_levels:
                     self.max_levels = lvl
