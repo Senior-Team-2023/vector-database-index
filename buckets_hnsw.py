@@ -2,6 +2,8 @@ import os
 from typing import Dict, List, Annotated
 import numpy as np
 import faiss
+from sklearn.neighbors import KNeighborsClassifier
+import pickle
 
 # from memory_profiler import profile
 
@@ -11,6 +13,7 @@ class VecDB_buckets_HNSW:
         self.file_path = file_path
         self.d = 70  # vector dimensions
         self.max_levels = 0
+        self.cos_threshold = 0.7
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -48,6 +51,8 @@ class VecDB_buckets_HNSW:
         # then retrieve the actual records from the database
         # to get the binary vector from the hyperplanes
         # print(query)
+        # query = np.array([0.374540119,0.950714306,0.731993942,0.598658484,0.15601864,0.15599452,0.058083612,0.866176146,0.601115012,0.708072578,0.020584494,0.969909852,0.832442641,0.212339111,0.181824967,0.18340451,0.304242243,0.524756432,0.431945019,0.29122914,0.611852895,0.139493861,0.292144649,0.366361843,0.456069984,0.785175961,0.199673782,0.514234438,0.592414569,0.046450413,0.607544852,0.170524124,0.065051593,0.948885537,0.965632033,0.808397348,0.304613769,0.097672114,0.684233027,0.440152494,0.122038235,0.49517691,0.034388521,0.909320402,0.258779982,0.662522284,0.311711076,0.520068021,0.546710279,0.184854456,0.969584628,0.775132823,0.939498942,0.89482735,0.597899979,0.921874235,0.088492502,0.195982862,0.045227289,0.325330331,0.38867729,0.271349032,0.828737509,0.356753327,0.28093451,0.542696083,0.140924225,0.802196981,0.074550644,0.986886937
+        #     ]).reshape(1, -1)
         print("Retrieving...")
         print("Calculating binary vector of query...")
         query_binary_vec = self._calc_binary_vec(query, self._plane_norms)
@@ -70,33 +75,40 @@ class VecDB_buckets_HNSW:
                 query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
 
                 query_binary_str = "".join(query_binary_vec[0].astype(str))
+                print(f"Hyperplane {query_binary_str} found, i = {i}")
+                print(f"Previous Hyperplane {prev_query_binary_str} found, i = {i-1}")
                 # this holds the query binary str of the parent bucket
                 prev_query_binary_str = query_binary_str
             except FileNotFoundError:
                 print(f"Hyperplane {query_binary_str} not found, i = {i}")
-                if i == 0:
-                    # if the hyperplane of the first level is not found, so take the hyperplane of the first bucket
-                    loaded_hyperplane = self._plane_norms
-                else:
-                    loaded_hyperplane = self._load_hyperplanes(
-                        f"hyperplane_{prev_query_binary_str}_{i-1}"
-                    )
+                # if i == 0:
+                #     # if the hyp    erplane of the first level is not found, so take the hyperplane of the first bucket
+                #     loaded_hyperplane = self._plane_norms
+                # else:
+                #     loaded_hyperplane = self._load_hyperplanes(
+                #         f"hyperplane_{prev_query_binary_str}_{i-1}"
+                #     )
                 leaf_level = i
+
                 # 34an no5rog mn al loop b3d ma nla2y al hyperplane
                 break
 
-        query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
-        query_binary_str = "".join(query_binary_vec[0].astype(str))
+        # query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+        # query_binary_str = "".join(query_binary_vec[0].astype(str))
 
         # load bucket from file
         print(f"Loading corresponding HNSW index {query_binary_str}...")
         try:
-            loaded_index = faiss.read_index(
-                f"./index/{query_binary_str}_{leaf_level}.csv.index"
+            # loaded_index = faiss.read_index(
+            #     f"./index/{query_binary_str}_{leaf_level}.csv.index"
+            # )
+            loaded_index = pickle.load(
+                open(f"./index/{query_binary_str}_{leaf_level}.csv.index", "rb")
             )
         except FileNotFoundError:
             print(f"HNSW index {query_binary_str} not found")
-        distances, labels = loaded_index.search(query, top_k)
+        # distances, labels = loaded_index.search(query, top_k)
+        distances, labels = loaded_index.kneighbors(query, n_neighbors=top_k)
         print("distances", distances)
         print("labels", labels)
         # calculate the score for each vector in the bucket
@@ -104,8 +116,9 @@ class VecDB_buckets_HNSW:
         scores = [(distances[0][i], labels[0][i]) for i in range(len(labels[0]))]
         scores = sorted(scores)[:top_k]
         # return the ids of the top_k records
-        # print(scores)
+        print(scores)
         return [s[1] for s in scores]
+        # return scores
 
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -183,9 +196,9 @@ class VecDB_buckets_HNSW:
             # print("norm_product",norm_product)
             # print("dot_product",dot_product)
             # cosine_similarity = dot_product / (norm_product)
-            # TODO: Tune the threshold (e.g. 0.9) to get the best results
+            # TODO: Tune the threshold (e.g. 0.95) to get the best results
             print("cosine_similarity", cosine_similarity)
-            if len(v) <= 5 or cosine_similarity >= 0.9:
+            if len(v) <= 5 or cosine_similarity >= self.cos_threshold:
                 self._HNSW_build_index(f"{k}_{str(0)}.csv")
             else:
                 self._build_bucket_index(f"{k}_{str(0)}.csv", 1)
@@ -264,7 +277,7 @@ class VecDB_buckets_HNSW:
             # print("dot_product",dot_product)
             print("cosine_similarity", cosine_similarity)
 
-            if len(v) <= 5 or cosine_similarity >= 0.9:
+            if len(v) <= 5 or cosine_similarity >= self.cos_threshold:
                 # update the max level
                 if lvl > self.max_levels:
                     self.max_levels = lvl
@@ -288,13 +301,22 @@ class VecDB_buckets_HNSW:
                     bucket_rec.append((id, embed))
                 # build the HNSW index
                 # bucket_rec = np.array(bucket_rec)
-                self._HNSW_index(
-                    data=bucket_rec,
-                    m=128,
-                    ef_construction=200,
-                    ef_search=32,
-                    filename=filename,
+                # self._HNSW_index(
+                #     data=bucket_rec,
+                #     m=128,
+                #     ef_construction=200,
+                #     ef_search=32,
+                #     filename=filename,
+                # )
+                # Knn using sklearn
+                knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+                knn.fit(
+                    np.array([e[1] for e in bucket_rec]),
+                    np.array([e[0] for e in bucket_rec]),
                 )
+                # save the index using pickle
+                with open(f"./index/{filename}.index", "wb") as fout:
+                    pickle.dump(knn, fout)
 
     def _HNSW_index(self, data, m, ef_construction, filename, ef_search):
         index = faiss.IndexHNSWFlat(self.d, m)
