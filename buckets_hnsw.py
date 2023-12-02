@@ -13,7 +13,8 @@ class VecDB_buckets_HNSW:
         self.file_path = file_path
         self.d = 70  # vector dimensions
         self.max_levels = 0
-        self.cos_threshold = 0.7
+        self.cos_threshold = 0.87
+        self.plane_nbits = 5
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -108,7 +109,13 @@ class VecDB_buckets_HNSW:
         except FileNotFoundError:
             print(f"HNSW index {query_binary_str} not found")
         # distances, labels = loaded_index.search(query, top_k)
-        distances, labels = loaded_index.kneighbors(query, n_neighbors=top_k)
+        try:
+            distances, labels = loaded_index.kneighbors(query, n_neighbors=top_k)
+        except ValueError as e:
+            n_neighbors_i = e.args[0].index("n_samples = ") + len("n_samples = ")
+            n_neighbors = int(e.args[0][n_neighbors_i])
+            print(f"n_neighbors = {n_neighbors}")
+            distances, labels = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
         print("distances", distances)
         print("labels", labels)
         # calculate the score for each vector in the bucket
@@ -131,9 +138,9 @@ class VecDB_buckets_HNSW:
         # TODO: build index for the database
         print("Building index...")
         # ---- 1. random projection ----
-        nbits = 4  # number of hyperplanes and binary vals to produce
+        # nbits = 4  # number of hyperplanes and binary vals to produce
         # create a set of nbits hyperplanes, with d dimensions
-        self._plane_norms = np.random.rand(nbits, self.d) - 0.5
+        self._plane_norms = np.random.rand(self.plane_nbits, self.d) - 0.5
         # store the hyperplanes in a file
         # self._save_hyperplanes("hyperplane0", self._plane_norms)
         # vectors = []
@@ -207,9 +214,9 @@ class VecDB_buckets_HNSW:
         # TODO: build index for the database
         print("Building index...")
         # ---- 1. random projection ----
-        nbits = 4  # number of hyperplanes and binary vals to produce
+        # nbits = 4  # number of hyperplanes and binary vals to produce
         # create a set of nbits hyperplanes, with d dimensions
-        _plane_norms = np.random.rand(nbits, self.d) - 0.5
+        _plane_norms = np.random.rand(self.plane_nbits, self.d) - 0.5
         # store the hyperplanes in a file
         self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
         # vectors = []
