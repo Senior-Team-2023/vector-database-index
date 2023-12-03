@@ -4,6 +4,8 @@ import numpy as np
 import faiss
 from sklearn.neighbors import KNeighborsClassifier
 import pickle
+from sklearn.decomposition import PCA
+
 
 # from memory_profiler import profile
 
@@ -11,10 +13,12 @@ import pickle
 class VecDB_lsh_one_level:
     def __init__(self, file_path="saved_db.csv", new_db=True) -> None:
         self.file_path = file_path
+        self.file_path_pca = "./index/saved_db_pca.csv"
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 5
+        self.plane_nbits = 4
+        self.pca_components = 65
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -50,17 +54,24 @@ class VecDB_lsh_one_level:
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         # --------HNSW---------
         print("Retrieving...")
+        # load pca
+        with open("./index/pca.pkl", "rb") as fin:
+            pca = pickle.load(fin)
+        # transform query
+        print(f"query: {query}")
+        query = pca.transform(query)
+        print(f"pca query: {query}")
         # print("Calculating binary vector of query...")
         query_binary_vec = self._calc_binary_vec(query, self._plane_norms)
         # print(query_binary_vec)
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
         # -------Worst case---------
-        return self._retrieve_worst_case(query, top_k, query_binary_str)
+        # return self._retrieve_worst_case(query, top_k, query_binary_str)
         # -------HNSW---------
         # return self._retrieve_HNSW(query, top_k, query_binary_str)
         # -------KNN---------
-        # return self._retrieve_KNN(query, top_k, query_binary_str)
+        return self._retrieve_KNN(query, top_k, query_binary_str)
 
     def _retrieve_worst_case(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
@@ -68,7 +79,7 @@ class VecDB_lsh_one_level:
         # ------- Worst Case (for loop) ----------
         scores = []
         # open database file to read
-        with open(f"./index/{query_binary_str}_{0}.csv.", "r") as fin:
+        with open(f"./index/{query_binary_str}_{0}.csv", "r") as fin:
             # search through the file line by line (sequentially)
             # each row is a record
             for row in fin.readlines():
@@ -160,11 +171,39 @@ class VecDB_lsh_one_level:
         print("Building index...")
         # ---- 1. random projection ----
         # create a set of nbits hyperplanes, with d dimensions
-        self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
-
+        self._plane_norms = np.random.rand(self.plane_nbits, self.pca_components) - 0.5
+        ids_pca = []
+        vectors_pca = []
         # open database file to read
-        buckets = {}
         with open(self.file_path, "r") as fin:
+            # search through the file line by line (sequentially)
+            # each row is a record
+            for row in fin.readlines():
+                row_splits = row.split(",")
+                # the first element is id
+                id = int(row_splits[0])
+                # the rest are embed
+                embed = [float(e) for e in row_splits[1:]]
+                embed = np.array(embed)
+                ids_pca.append(id)
+                vectors_pca.append(embed)
+        # build pca
+        pca = self._build_pca(vectors_pca)
+        # transform vectors
+        vectors_pca_transform = pca.transform(vectors_pca)
+        # save pca
+        with open("./index/pca.pkl", "wb") as fout:
+            pickle.dump(pca, fout)
+        # save new database
+        with open(self.file_path_pca, "w") as fout:
+            for i in range(len(ids_pca)):
+                id = ids_pca[i]
+                embed = vectors_pca_transform[i]
+                row_str = f"{id}," + ",".join([str(e) for e in embed])
+                fout.write(f"{row_str}\n")
+
+        buckets = {}
+        with open(self.file_path_pca, "r") as fin:
             # search through the file line by line (sequentially)
             # each row is a record
             for row in fin.readlines():
@@ -310,3 +349,8 @@ class VecDB_lsh_one_level:
         # easier (although is okay to use boolean for Hamming distance)
         embed_dot = embed_dot.astype(int)
         return embed_dot
+
+    def _build_pca(self, data):
+        pca = PCA(n_components=self.pca_components)
+        pca.fit(data)
+        return pca
