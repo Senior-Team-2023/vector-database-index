@@ -160,8 +160,8 @@ class VecDB_lsh_one_level:
         print("Building index...")
         # ---- 1. random projection ----
         # create a set of nbits hyperplanes, with d dimensions
-        self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
-        # self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
+        # self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
+        self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
 
         # open database file to read
         buckets = {}
@@ -318,7 +318,7 @@ class VecDB_lsh_one_level:
         # Loop to generate n vectors
         for _ in range(n):
             # Generate a random vector
-            vec = np.random.randn(d)
+            vec = np.random.randn(d) - 0.5
             # Orthogonalize it against all previously generated vectors
             for basis in vectors:
                 vec -= np.dot(vec, basis) * basis
