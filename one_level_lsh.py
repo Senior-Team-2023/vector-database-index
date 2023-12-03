@@ -56,11 +56,11 @@ class VecDB_lsh_one_level:
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
         # -------Worst case---------
-        return self._retrieve_worst_case(query, top_k, query_binary_str)
+        # return self._retrieve_worst_case(query, top_k, query_binary_str)
         # -------HNSW---------
         # return self._retrieve_HNSW(query, top_k, query_binary_str)
         # -------KNN---------
-        # return self._retrieve_KNN(query, top_k, query_binary_str)
+        return self._retrieve_KNN(query, top_k, query_binary_str)
 
     def _retrieve_worst_case(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
@@ -238,7 +238,7 @@ class VecDB_lsh_one_level:
                     embed = [float(e) for e in row_splits[1:]]
                     embed = np.array(embed)
                     bucket_rec.append((id, embed))
-                knn = KNeighborsClassifier(n_neighbors=10, metric="manhattan")
+                knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
 
                 knn.fit(
                     np.array([e[1] for e in bucket_rec]),
