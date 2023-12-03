@@ -4,6 +4,7 @@ from worst_case_implementation import VecDBWorst
 # from lsh_random_projection import VecDBLSH
 from buckets_hnsw import VecDB_buckets_HNSW
 from OldTrials.lsh import VecDB_lsh
+from one_level_lsh import VecDB_lsh_one_level
 
 # from hnsw import VecDB_hnsw
 
@@ -93,13 +94,13 @@ if __name__ == "__main__":
     # db = VecDBWorst()
     # db = VecDBLSH()
     # db = VecDB_buckets_HNSW()
-    db = VecDB_lsh()
+    db = VecDB_lsh_one_level()
     # db = VecDB_hnsw()
     # db = VecDB_OPQ32_IVF4096_HNSW_PQ32()
     # db = VecDB_ivf_hnsw()
     # db = VecDB_ivf_pq()
     # generate random records
-    np.random.seed(42)  # set seed value for random number generator
+    # np.random.seed(42)  # set seed value for random number generator
     records_np = np.random.random((100000, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
