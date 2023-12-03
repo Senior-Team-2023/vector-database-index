@@ -318,7 +318,9 @@ class VecDB_lsh_one_level:
         # Loop to generate n vectors
         for _ in range(n):
             # Generate a random vector
-            vec = np.random.randn(d) - 0.5
+            random_shift = np.random.randn(1)
+            # random_shift = random_shift if random_shift < 0.9 else 0
+            vec = np.random.randn(d) - random_shift
             # Orthogonalize it against all previously generated vectors
             for basis in vectors:
                 vec -= np.dot(vec, basis) * basis
