@@ -14,7 +14,7 @@ class VecDB_buckets_HNSW:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 5
+        self.plane_nbits = 4
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -65,49 +65,43 @@ class VecDB_buckets_HNSW:
         leaf_level = 0
         loaded_hyperplane = None
         print(f"max_levels = {self.max_levels}")
-        prev_query_binary_str = ""
+        prev_loaded_index = None
         for i in range(self.max_levels + 1):
             try:
                 # load hyperplanes based on bucket key and level
-                loaded_hyperplane = self._load_hyperplanes(
-                    f"hyperplane_{query_binary_str}_{i}"
-                )
+                # loaded_hyperplane = self._load_hyperplanes(
+                #     f"hyperplane_{query_binary_str}_{i}"
+                # )
+                loaded_hyperplane = self._load_hyperplanes(f"hyperplane_{i}")
 
                 query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
 
                 query_binary_str = "".join(query_binary_vec[0].astype(str))
                 print(f"Hyperplane {query_binary_str} found, i = {i}")
-                print(f"Previous Hyperplane {prev_query_binary_str} found, i = {i-1}")
+                loaded_index = pickle.load(
+                    open(f"./index/{query_binary_str}_{i}.csv.index", "rb")
+                )
+                prev_loaded_index = loaded_index
                 # this holds the query binary str of the parent bucket
-                prev_query_binary_str = query_binary_str
             except FileNotFoundError:
                 print(f"Hyperplane {query_binary_str} not found, i = {i}")
-                # if i == 0:
-                #     # if the hyp    erplane of the first level is not found, so take the hyperplane of the first bucket
-                #     loaded_hyperplane = self._plane_norms
-                # else:
-                #     loaded_hyperplane = self._load_hyperplanes(
-                #         f"hyperplane_{prev_query_binary_str}_{i-1}"
-                #     )
                 leaf_level = i
 
                 # 34an no5rog mn al loop b3d ma nla2y al hyperplane
                 break
 
-        # query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
-        # query_binary_str = "".join(query_binary_vec[0].astype(str))
-
+        loaded_index = prev_loaded_index
         # load bucket from file
         print(f"Loading corresponding HNSW index {query_binary_str}...")
-        try:
-            # loaded_index = faiss.read_index(
-            #     f"./index/{query_binary_str}_{leaf_level}.csv.index"
-            # )
-            loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}_{leaf_level}.csv.index", "rb")
-            )
-        except FileNotFoundError:
-            print(f"HNSW index {query_binary_str} not found")
+        # try:
+        #     # loaded_index = faiss.read_index(
+        #     #     f"./index/{query_binary_str}_{leaf_level}.csv.index"
+        #     # )
+        #     loaded_index = pickle.load(
+        #         open(f"./index/{query_binary_str}_{leaf_level}.csv.index", "rb")
+        #     )
+        # except FileNotFoundError:
+        #     print(f"HNSW index {query_binary_str} not found")
         # distances, labels = loaded_index.search(query, top_k)
         try:
             distances, labels = loaded_index.kneighbors(query, n_neighbors=top_k)
@@ -214,11 +208,19 @@ class VecDB_buckets_HNSW:
         # TODO: build index for the database
         print("Building index...")
         # ---- 1. random projection ----
-        # nbits = 4  # number of hyperplanes and binary vals to produce
-        # create a set of nbits hyperplanes, with d dimensions
-        _plane_norms = np.random.rand(self.plane_nbits, self.d) - 0.5
-        # store the hyperplanes in a file
-        self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
+        # ------------try to open hyperplane file for this level----------------
+        _plane_norms = None
+        try:
+            _plane_norms = self._load_hyperplanes("hyperplane_" + str(lvl - 1))
+        except FileNotFoundError:
+            print("Hyperplane file not found, creating new hyperplane file...")
+            _plane_norms = np.random.rand(self.plane_nbits, self.d) - 0.5
+            # store the hyperplanes in a file
+            self._save_hyperplanes("hyperplane_" + str(lvl - 1) + ".csv", _plane_norms)
+
+        # _plane_norms = np.random.rand(self.plane_nbits, self.d) - 0.5
+        # # store the hyperplanes in a file
+        # self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
         # vectors = []
         # open database file to read
         buckets = {}
@@ -346,7 +348,7 @@ class VecDB_buckets_HNSW:
 
     def _save_buckets(self, buckets, lvl: int):
         for key, value in buckets.items():
-            with open(f"./index/{key}_{lvl}.csv", "w") as fout:
+            with open(f"./index/{key}_{lvl}.csv", "a") as fout:
                 # fout.write(",".join(str(e) for e in value))
                 # print(value)
                 # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
