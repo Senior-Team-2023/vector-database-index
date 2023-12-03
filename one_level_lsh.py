@@ -50,7 +50,7 @@ class VecDB_lsh_one_level:
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         # --------HNSW---------
         print("Retrieving...")
-        print("Calculating binary vector of query...")
+        # print("Calculating binary vector of query...")
         query_binary_vec = self._calc_binary_vec(query, self._plane_norms)
         # print(query_binary_vec)
         # to get the binary value of the vector as a string
@@ -58,9 +58,9 @@ class VecDB_lsh_one_level:
         # -------Worst case---------
         return self._retrieve_worst_case(query, top_k, query_binary_str)
         # -------HNSW---------
-        return self._retrieve_HNSW(query, top_k, query_binary_str)
+        # return self._retrieve_HNSW(query, top_k, query_binary_str)
         # -------KNN---------
-        return self._retrieve_KNN(query, top_k, query_binary_str)
+        # return self._retrieve_KNN(query, top_k, query_binary_str)
 
     def _retrieve_worst_case(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
@@ -83,7 +83,7 @@ class VecDB_lsh_one_level:
         # here we assume that if two rows have the same score, return the lowest ID
         # sort and get the top_k records
         scores = sorted(scores, reverse=True)[:top_k]
-        print(scores)
+        # print(scores)
         # return the ids of the top_k records
         return [s[1] for s in scores]
 
@@ -97,14 +97,14 @@ class VecDB_lsh_one_level:
             print(f"KNN index {query_binary_str} not found")
         distances, labels = loaded_index.search(query, top_k)
 
-        print("distances", distances)
-        print("labels", labels)
+        # print("distances", distances)
+        # print("labels", labels)
         # calculate the score for each vector in the bucket
         print("Calculating score...")
         scores = [(distances[0][i], labels[0][i]) for i in range(len(labels[0]))]
         scores = sorted(scores)[:top_k]
         # return the ids of the top_k records
-        print(scores)
+        # print(scores)
         return [s[1] for s in scores]
 
     def _retrieve_KNN(
@@ -119,21 +119,34 @@ class VecDB_lsh_one_level:
             print(f"KNN index {query_binary_str} not found")
 
         try:
-            distances, labels = loaded_index.kneighbors(query, n_neighbors=top_k)
+            distances, indices = loaded_index.kneighbors(query, n_neighbors=top_k)
         except ValueError as e:
             n_neighbors_i = e.args[0].index("n_samples = ") + len("n_samples = ")
             n_neighbors = int(e.args[0][n_neighbors_i])
             print(f"n_neighbors = {n_neighbors}")
-            distances, labels = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
-        print("distances", distances)
-        print("labels", labels)
+            distances, indices = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
+        # print("distances", distances)
+        # print("indices", indices)
         # calculate the score for each vector in the bucket
         print("Calculating score...")
-        scores = [(distances[0][i], labels[0][i]) for i in range(len(labels[0]))]
-        scores = sorted(scores)[:top_k]
+        # scores = [(distances[0][i], indices[0][i]) for i in range(len(indices[0]))]
+        # scores = sorted(scores)[:top_k]
+        # Sort the neighbors by distance
+        sorted_neighbors = sorted(zip(indices[0], distances[0]), key=lambda x: x[1])
+
+        # Retrieve the corresponding IDs for the sorted neighbors
+
+        ids = []
+        with open(f"./index/{query_binary_str}_{0}.csv.ids", "r") as fin:
+            for row in fin.readlines():
+                id = int(row)
+                ids.append(id)
+                # the rest are embed
+        sorted_ids = [ids[idx] for idx, _ in sorted_neighbors][:top_k]
+
         # return the ids of the top_k records
-        print(scores)
-        return [s[1] for s in scores]
+        print(sorted_ids)
+        return sorted_ids
 
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -184,7 +197,7 @@ class VecDB_lsh_one_level:
         # loop over the buckets
         for k, v in buckets.items():
             # HNSW
-            self._HNSW_build_index(f"{k}_{str(0)}.csv")
+            # self._HNSW_build_index(f"{k}_{str(0)}.csv")
             # KNN
             self._KNN_build_index(f"{k}_{str(0)}.csv")
 
@@ -225,7 +238,8 @@ class VecDB_lsh_one_level:
                     embed = [float(e) for e in row_splits[1:]]
                     embed = np.array(embed)
                     bucket_rec.append((id, embed))
-                knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+                knn = KNeighborsClassifier(n_neighbors=10, metric="manhattan")
+
                 knn.fit(
                     np.array([e[1] for e in bucket_rec]),
                     np.array([e[0] for e in bucket_rec]),
@@ -233,6 +247,11 @@ class VecDB_lsh_one_level:
                 # save the index using pickle
                 with open(f"./index/{filename}.knn", "wb") as fout:
                     pickle.dump(knn, fout)
+                # save a file that contains the list of ids
+                with open(f"./index/{filename}.ids", "w") as fout:
+                    for e in bucket_rec:
+                        fout.write(str(e[0]))
+                        fout.write("\n")
 
     def _HNSW_index(self, data, m, ef_construction, filename, ef_search):
         index = faiss.IndexHNSWFlat(self.d, m)
