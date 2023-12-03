@@ -161,6 +161,7 @@ class VecDB_lsh_one_level:
         # ---- 1. random projection ----
         # create a set of nbits hyperplanes, with d dimensions
         self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
+        # self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
 
         # open database file to read
         buckets = {}
@@ -310,3 +311,19 @@ class VecDB_lsh_one_level:
         # easier (although is okay to use boolean for Hamming distance)
         embed_dot = embed_dot.astype(int)
         return embed_dot
+
+    def generate_orthogonal_vectors(self, n, d):
+        # Start with an empty list to hold the vectors
+        vectors = []
+        # Loop to generate n vectors
+        for _ in range(n):
+            # Generate a random vector
+            vec = np.random.randn(d)
+            # Orthogonalize it against all previously generated vectors
+            for basis in vectors:
+                vec -= np.dot(vec, basis) * basis
+            # Normalize the vector
+            vec /= np.linalg.norm(vec)
+            # Add the orthogonalized, normalized vector to the list
+            vectors.append(vec)
+        return np.array(vectors)
