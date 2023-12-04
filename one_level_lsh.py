@@ -14,7 +14,7 @@ class VecDB_lsh_one_level:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 5
+        self.plane_nbits = 4
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -111,9 +111,32 @@ class VecDB_lsh_one_level:
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
     ):
         print(f"Loading corresponding KNN index {query_binary_str}...")
+
+        leaf_level = 0
+        loaded_hyperplane = None
+        print(f"max_levels = {self.max_levels}")
+        prev_query_binary_str = ""
+        for i in range(self.max_levels + 1):
+            try:
+                # load hyperplanes based on bucket key and level
+                loaded_hyperplane = self._load_hyperplanes(
+                    f"hyperplane_{query_binary_str}_{i}"
+                )
+
+                query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+                query_binary_str = "".join(query_binary_vec[0].astype(str))
+                # print(f"Hyperplane {query_binary_str} found, i = {i}")
+                # print(f"Previous Hyperplane {prev_query_binary_str} found, i = {i-1}")
+                # this holds the query binary str of the parent bucket
+                prev_query_binary_str = query_binary_str
+            except FileNotFoundError:
+                print(f"Hyperplane {query_binary_str} not found, i = {i}")
+                leaf_level = i
+                break
+
         try:
             loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}_{0}.csv.knn", "rb")
+                open(f"./index/{query_binary_str}_{leaf_level}.csv.knn", "rb")
             )
         except FileNotFoundError:
             print(f"KNN index {query_binary_str} not found")
@@ -137,7 +160,7 @@ class VecDB_lsh_one_level:
         # Retrieve the corresponding IDs for the sorted neighbors
 
         ids = []
-        with open(f"./index/{query_binary_str}_{0}.csv.ids", "r") as fin:
+        with open(f"./index/{query_binary_str}_{leaf_level}.csv.ids", "r") as fin:
             for row in fin.readlines():
                 id = int(row)
                 ids.append(id)
@@ -197,10 +220,18 @@ class VecDB_lsh_one_level:
         self._save_buckets(buckets, 0)  # save for any bucket
         # loop over the buckets
         for k, v in buckets.items():
-            # HNSW
-            # self._HNSW_build_index(f"{k}_{str(0)}.csv")
+            # vectors = [e[1] for e in v]
+            # vectors = np.array(vectors)
+            # vectors_mean = np.mean(vectors, axis=0)
+            # cosine_similarity = np.mean(
+            #     [self._cal_score(vectors_mean, vector) for vector in vectors]
+            # )
+            # print("cosine_similarity", cosine_similarity)
+            if len(v) <= 1000:
+                self._KNN_build_index(f"{k}_{str(0)}.csv")
+            else:
+                self._build_bucket_index(f"{k}_{str(0)}.csv", 1)
             # KNN
-            self._KNN_build_index(f"{k}_{str(0)}.csv")
 
     def _HNSW_build_index(self, filename: str):
         # open each file inside the index folder
@@ -225,6 +256,68 @@ class VecDB_lsh_one_level:
                     ef_search=32,
                     filename=filename,
                 )
+
+    def _build_bucket_index(self, filename: str, lvl: int):
+        # TODO: build index for the database
+        print("Building index...")
+        # ---- 1. random projection ----
+        # nbits = 4  # number of hyperplanes and binary vals to produce
+        # create a set of nbits hyperplanes, with d dimensions
+        _plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
+        # store the hyperplanes in a file
+        self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
+        # vectors = []
+        # open database file to read
+        buckets = {}
+        with open(f"./index/{filename}", "r") as fin:
+            # search through the file line by line (sequentially)
+            # each row is a record
+            for row in fin.readlines():
+                row_splits = row.split(",")
+                # the first element is id
+                id = int(row_splits[0])
+                # the rest are embed
+                embed = [float(e) for e in row_splits[1:]]
+                embed = np.array(embed)
+
+                # ---------Do random projection---------
+                # calculate the dot product for each of these
+                # to get the binary vector from the hyperplanes
+                embed_dot = self._calc_binary_vec(embed, _plane_norms)
+                # vectors.append((id, embed_dot, embed))
+                # --- 2. bucketing ---
+                # convert from array to string
+                # to get the binary value of the vector as a string
+                hash_str = "".join(embed_dot.astype(str))
+                # create bucket if it doesn't exist
+                if hash_str not in buckets.keys():
+                    buckets[hash_str] = []
+                # add vector position to bucket
+                # all vectors that has the same binary value will be in the same bucket
+                # append only the id and the embed, not the binary value
+                buckets[hash_str].append((id, embed))
+
+        # print(buckets)
+        # save buckets to files
+        print("Saving buckets...")
+        self._save_buckets(buckets, lvl)  # save for any bucket
+
+        # loop over the buckets
+        for k, v in buckets.items():
+            # vectors = [e[1] for e in v]
+            # vectors = np.array(vectors)
+            # vectors_mean = np.mean(vectors, axis=0)
+            # cosine_similarity = np.mean(
+            #     [self._cal_score(vectors_mean, vector) for vector in vectors]
+            # )
+            # print("cosine_similarity", cosine_similarity)
+            if len(v) <= 1000:
+                # update the max level
+                if lvl > self.max_levels:
+                    self.max_levels = lvl
+                self._KNN_build_index(f"{k}_{str(lvl)}.csv")
+            else:
+                self._build_bucket_index(f"{k}_{str(lvl)}.csv", lvl + 1)
 
     def _KNN_build_index(self, filename: str):
         # open each file inside the index folder
