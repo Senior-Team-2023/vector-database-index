@@ -115,31 +115,45 @@ class VecDB_lsh_one_level:
         leaf_level = 0
         loaded_hyperplane = None
         print(f"max_levels = {self.max_levels}")
-        prev_query_binary_str = ""
+        # prev_query_binary_str = ""
+        prev_loaded_index = None
+        loaded_index = None
         for i in range(self.max_levels + 1):
+            # load hyperplanes based on bucket key and level
+            # loaded_hyperplane = self._load_hyperplanes(
+            #     f"hyperplane_{query_binary_str}_{i}"
+            # )
+            print(f"Loading hyperplane {i}...")
             try:
-                # load hyperplanes based on bucket key and level
-                loaded_hyperplane = self._load_hyperplanes(
-                    f"hyperplane_{query_binary_str}_{i}"
-                )
-
-                query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
-                query_binary_str = "".join(query_binary_vec[0].astype(str))
-                # print(f"Hyperplane {query_binary_str} found, i = {i}")
-                # print(f"Previous Hyperplane {prev_query_binary_str} found, i = {i-1}")
-                # this holds the query binary str of the parent bucket
-                prev_query_binary_str = query_binary_str
+                loaded_hyperplane = self._load_hyperplanes(f"hyperplane_{i}")
             except FileNotFoundError:
+                print(f"Hyperplane file not found, creating new hyperplane file...")
+                loaded_hyperplane = self._plane_norms
+            query_binary_vec = self._calc_binary_vec(query, loaded_hyperplane)
+            query_binary_str = "".join(query_binary_vec[0].astype(str))
+            # print(f"Hyperplane {query_binary_str} found, i = {i}")
+            # print(f"Previous Hyperplane {prev_query_binary_str} found, i = {i-1}")
+            # this holds the query binary str of the parent bucket
+            # prev_query_binary_str = query_binary_str
+            try:
+                loaded_index = pickle.load(
+                    open(f"./index/{query_binary_str}_{i}.csv.knn", "rb")
+                )
+                # prev_loaded_index = loaded_index
                 print(f"Hyperplane {query_binary_str} not found, i = {i}")
                 leaf_level = i
                 break
+            except FileNotFoundError:
+                continue
 
-        try:
-            loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}_{leaf_level}.csv.knn", "rb")
-            )
-        except FileNotFoundError:
-            print(f"KNN index {query_binary_str} not found")
+        # loaded_index = prev_loaded_index
+
+        # try:
+        #     loaded_index = pickle.load(
+        #         open(f"./index/{query_binary_str}_{leaf_level}.csv.knn", "rb")
+        #     )
+        # except FileNotFoundError:
+        #     print(f"KNN index {query_binary_str} not found")
 
         try:
             distances, indices = loaded_index.kneighbors(query, n_neighbors=top_k)
@@ -185,7 +199,6 @@ class VecDB_lsh_one_level:
         # create a set of nbits hyperplanes, with d dimensions
         # self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
         self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
-
         # open database file to read
         buckets = {}
         with open(self.file_path, "r") as fin:
@@ -263,9 +276,18 @@ class VecDB_lsh_one_level:
         # ---- 1. random projection ----
         # nbits = 4  # number of hyperplanes and binary vals to produce
         # create a set of nbits hyperplanes, with d dimensions
-        _plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
-        # store the hyperplanes in a file
-        self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
+        # _plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
+        # # store the hyperplanes in a file
+        # self._save_hyperplanes("hyperplane_" + filename, _plane_norms)
+
+        _plane_norms = None
+        try:
+            _plane_norms = self._load_hyperplanes("hyperplane_" + str(lvl - 1))
+        except FileNotFoundError:
+            print("Hyperplane file not found, creating new hyperplane file...")
+            _plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
+            # store the hyperplanes in a file
+            self._save_hyperplanes("hyperplane_" + str(lvl - 1) + ".csv", _plane_norms)
         # vectors = []
         # open database file to read
         buckets = {}
@@ -368,7 +390,7 @@ class VecDB_lsh_one_level:
 
     def _save_buckets(self, buckets, lvl: int):
         for key, value in buckets.items():
-            with open(f"./index/{key}_{lvl}.csv", "w") as fout:
+            with open(f"./index/{key}_{lvl}.csv", "a+") as fout:
                 # fout.write(",".join(str(e) for e in value))
                 # print(value)
                 # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
