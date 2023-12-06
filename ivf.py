@@ -2,18 +2,18 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
 from sklearn.cluster import MiniBatchKMeans
-import pickle
+import joblib
 
 class IVFDB:
     # constructor
     def __init__(self, file_path="saved_db.csv", new_db=True):
-        self.num_part = 32  # number of IVF partitions int(4*sqrt(n))
+        self.num_part = 32  # number of partitions
         self.centroids = None  # centroids of each partition
         # self.assignments = None  # assignments of each vector to a partition
         self.iterations = 32  # number of iterations for kmeans
-        self.index = [
-            [] for _ in range(self.num_part)
-        ]  # index of each vector within a partition
+        # self.index = [
+        #     [] for _ in range(self.num_part)
+        # ]  # index of each vector within a partition
         self.file_path = file_path
         if new_db:
             # just open new file to delete the old one
@@ -50,12 +50,11 @@ class IVFDB:
         top_centroids = self._get_top_centroids(query, top_k)
         print("top_centroids:", top_centroids)
         # load kmeans model
-        # with open("./kmeans_model.pkl", "rb") as fin:
-        #     kmeans = pickle.load(fin)
-        # get the assignments of the query to the centroids
-        # c = kmeans.predict([query,query])
+        # kmeans = joblib.load("./kmeans_model.joblib")
+        # # get the assignments of the query to the centroids
+        # c = kmeans.predict(query)
         # print("c:", c)
-        # # c = c[0]
+        # c = c[0]
         # with open(f"./index/index_{c}.csv", "r") as fin:
         #         for row in fin.readlines():
         #             row_splits = row.split(",")
@@ -136,22 +135,36 @@ class IVFDB:
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
-        # self.num_part = int(4 * np.sqrt(len(dataset)))
-        # print("num_part:", self.num_part)
-        # self.index = [[] for _ in range(self.num_part)]
+        # self.num_part = int(4 * np.sqrt(len(id_of_dataset)))
+        print("num_part:", self.num_part)
+        self.index = [[] for _ in range(self.num_part)]
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
         )
         # kmeans = MiniBatchKMeans(
         #     n_clusters=self.num_part,
         #     random_state=0,
-        #     batch_size=2 * 256,
+        #     # batch_size=2 * 256,
+        #     batch_size=len(id_of_dataset) // 20,
         #     #   max_iter=self.iterations,
         #     n_init="auto",
-        # ).fit(dataset)
-        # # save the kmeans model
-        # with open("./kmeans_model.pkl", "wb") as fout:
-        #     pickle.dump(kmeans, fout)
+        # )
+        # kmeans.fit(dataset)
+        # for i in range(0, len(id_of_dataset), len(id_of_dataset) // 20):
+        #     # print("i:", i)
+        #     dataset = np.loadtxt(
+        #         self.file_path,
+        #         delimiter=",",
+        #         skiprows=i,
+        #         dtype=np.float32,
+        #         usecols=range(1, 71),
+        #         max_rows=len(id_of_dataset) // 20,
+        #     )
+        #     kmeans.partial_fit(dataset.astype(np.double))
+
+        # # save the kmeans model using joblib
+        # joblib.dump(kmeans, "./kmeans_model.joblib")
+        # get the centroids and assignments
         # self.centroids = kmeans.cluster_centers_
         # assignments = kmeans.labels_
         # print("centroids shape:", self.centroids.shape)
@@ -171,7 +184,9 @@ class IVFDB:
 
     def _get_top_centroids(self, query, top_k):
         # find the nearest centroids to the query
-        top_k_centroids = np.argsort(np.linalg.norm(self.centroids - np.array(query), axis=1))
+        top_k_centroids = np.argsort(
+            np.linalg.norm(self.centroids - np.array(query), axis=1)
+        )
         # get the top_k centroids
         top_k_centroids = top_k_centroids[:top_k]
         return top_k_centroids
