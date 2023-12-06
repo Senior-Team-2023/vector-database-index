@@ -4,6 +4,9 @@ import numpy as np
 import faiss
 from sklearn.neighbors import KNeighborsClassifier
 import pickle
+from scipy.cluster.vq import kmeans2
+from typing import Dict, List, Annotated
+from sklearn.cluster import MiniBatchKMeans
 
 # from memory_profiler import profile
 
@@ -14,7 +17,11 @@ class VecDB_lsh_one_level:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 5
+        self.plane_nbits = 4
+        self.num_part = 32  # number of partitions
+        self.centroids = {}  # centroids of each partition
+        self.iterations = 32  # number of iterations for kmeans
+        self.ivf = {}
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -60,7 +67,30 @@ class VecDB_lsh_one_level:
         # -------HNSW---------
         # return self._retrieve_HNSW(query, top_k, query_binary_str)
         # -------KNN---------
-        return self._retrieve_KNN(query, top_k, query_binary_str)
+        # self._retrieve_KNN(query, top_k, query_binary_str)
+        # top_centroids in the bucket query_binary_str
+        scores = []
+
+        top_centroids = self._get_top_centroids(query, top_k, query_binary_str)
+        print("top_centroids:", top_centroids)
+        for centroid in top_centroids:
+            with open(f"./index/{query_binary_str}_index_{centroid}.csv", "r") as fin:
+                for row in fin.readlines():
+                    row_splits = row.split(",")
+                    # the first element is id
+                    id = int(row_splits[0])
+                    # the rest are embed
+                    embed = [float(e) for e in row_splits[1:]]
+                    score = self._cal_score(query, embed)
+                    # append a tuple of score and id to scores
+                    # if (score, id) not in scores:
+                    scores.append((score, id))
+        # here we assume that if two rows have the same score, return the lowest ID
+        # sort and get the top_k records
+        scores = sorted(scores, reverse=True)[:top_k]
+        # print(scores)
+        # return the ids of the top_k records
+        return [s[1] for s in scores]
 
     def _retrieve_worst_case(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
@@ -108,12 +138,16 @@ class VecDB_lsh_one_level:
         return [s[1] for s in scores]
 
     def _retrieve_KNN(
-        self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
+        self,
+        query: Annotated[List[float], 70],
+        top_k=5,
+        query_binary_str="",
+        centriod_id=0,
     ):
         print(f"Loading corresponding KNN index {query_binary_str}...")
         try:
             loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}_{0}.csv.knn", "rb")
+                open(f"./index/{query_binary_str}_index_{centriod_id}.knn", "rb")
             )
         except FileNotFoundError:
             print(f"KNN index {query_binary_str} not found")
@@ -137,7 +171,7 @@ class VecDB_lsh_one_level:
         # Retrieve the corresponding IDs for the sorted neighbors
 
         ids = []
-        with open(f"./index/{query_binary_str}_{0}.csv.ids", "r") as fin:
+        with open(f"./index/{query_binary_str}_index_{centriod_id}.ids", "r") as fin:
             for row in fin.readlines():
                 id = int(row)
                 ids.append(id)
@@ -160,15 +194,17 @@ class VecDB_lsh_one_level:
         print("Building index...")
         # ---- 1. random projection ----
         # create a set of nbits hyperplanes, with d dimensions
-        # self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
-        self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
+        self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5)
+        # self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
 
         # open database file to read
         buckets = {}
         with open(self.file_path, "r") as fin:
-            # search through the file line by line (sequentially)
-            # each row is a record
-            for row in fin.readlines():
+            lines = fin.readlines()
+            # the size of the db
+            n = len(lines)
+            # self.plane_nbits = np.floor(np.log10(n))  # each row is a record
+            for row in lines:
                 row_splits = row.split(",")
                 # the first element is id
                 id = int(row_splits[0])
@@ -188,84 +224,126 @@ class VecDB_lsh_one_level:
                 # create bucket if it doesn't exist
                 if hash_str not in buckets.keys():
                     buckets[hash_str] = []
+                    print(f"new bucket: {hash_str}")
                 # add vector position to bucket
                 # all vectors that has the same binary value will be in the same bucket
                 # append only the id and the embed, not the binary value
                 buckets[hash_str].append((id, embed))
 
         # save the parent database
-        self._save_buckets(buckets, 0)  # save for any bucket
+        self._save_buckets(buckets)  # save for any bucket
+        print("IVF for buckets")
         # loop over the buckets
         for k, v in buckets.items():
-            # HNSW
-            # self._HNSW_build_index(f"{k}_{str(0)}.csv")
-            # KNN
-            self._KNN_build_index(f"{k}_{str(0)}.csv")
-
-    def _HNSW_build_index(self, filename: str):
-        # open each file inside the index folder
-        if filename.endswith(".csv"):
-            bucket_rec = []
-            with open(f"./index/{filename}", "r") as fin:
-                for row in fin.readlines():
-                    row_splits = row.split(",")
-                    # the first element is id
-                    id = int(row_splits[0])
-                    # the rest are embed
-                    embed = [float(e) for e in row_splits[1:]]
-                    embed = np.array(embed)
-                    bucket_rec.append((id, embed))
-                # build the HNSW index
-                # print("bucket_rec", bucket_rec)
-                # bucket_rec = np.array(bucket_rec)
-                self._HNSW_index(
-                    data=bucket_rec,
-                    m=128,
-                    ef_construction=200,
-                    ef_search=32,
-                    filename=filename,
-                )
+            # use IVF for each bucket
+            self._IVF_build_index(k)
 
     def _KNN_build_index(self, filename: str):
         # open each file inside the index folder
         if filename.endswith(".csv"):
             bucket_rec = []
-            with open(f"./index/{filename}", "r") as fin:
-                for row in fin.readlines():
-                    row_splits = row.split(",")
-                    # the first element is id
-                    id = int(row_splits[0])
-                    # the rest are embed
-                    embed = [float(e) for e in row_splits[1:]]
-                    embed = np.array(embed)
-                    bucket_rec.append((id, embed))
-                knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+            # read the database file from csv file
+            id_of_dataset = np.loadtxt(
+                f"./index/{filename}",
+                delimiter=",",
+                skiprows=0,
+                dtype=np.int32,
+                usecols=0,
+            )
+            # print("id_of_dataset shape:", id_of_dataset.shape)
+            dataset = np.loadtxt(
+                f"./index/{filename}",
+                delimiter=",",
+                skiprows=0,
+                dtype=np.float32,
+                usecols=range(1, 71),
+            )
 
-                knn.fit(
-                    np.array([e[1] for e in bucket_rec]),
-                    np.array([e[0] for e in bucket_rec]),
-                )
-                # save the index using pickle
-                with open(f"./index/{filename}.knn", "wb") as fout:
-                    pickle.dump(knn, fout)
-                # save a file that contains the list of ids
-                with open(f"./index/{filename}.ids", "w") as fout:
-                    for e in bucket_rec:
-                        fout.write(str(e[0]))
-                        fout.write("\n")
+            knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+            print(f"the file name ali bygib al error: {filename}")
+            knn.fit(dataset, id_of_dataset)
 
-    def _HNSW_index(self, data, m, ef_construction, filename, ef_search):
-        index = faiss.IndexHNSWFlat(self.d, m)
-        # set efConstruction and efSearch parameters
-        index.hnsw.efConstruction = ef_construction
-        index.hnsw.efSearch = ef_search
-        # Wrap the index with IDMap
-        id_map = faiss.IndexIDMap(index)
-        id_map.add_with_ids(
-            np.array([e[1] for e in data]), np.array([e[0] for e in data])
+            # save the index using pickle
+            with open(f"./index/{filename}.knn", "wb") as fout:
+                pickle.dump(knn, fout)
+            # save a file that contains the list of ids
+            with open(f"./index/{filename}.ids", "w") as fout:
+                for e in bucket_rec:
+                    fout.write(str(e[0]))
+                    fout.write("\n")
+
+    def _IVF_build_index(self, filename: str):
+        # read the database file from csv file
+        id_of_dataset = np.loadtxt(
+            f"./index/{filename}.csv",
+            delimiter=",",
+            skiprows=0,
+            dtype=np.int32,
+            usecols=0,
         )
-        # save the index
-        faiss.write_index(id_map, f"./index/{filename}.index")
+        # print("id_of_dataset shape:", id_of_dataset.shape)
+        dataset = np.loadtxt(
+            f"./index/{filename}.csv",
+            delimiter=",",
+            skiprows=0,
+            dtype=np.float32,
+            usecols=range(1, 71),
+        )
+        # print("dataset shape:", dataset.shape)
+        # print("dataset[0]:", dataset[0])
+
+        self.num_part = int(4 * np.sqrt(len(id_of_dataset)))
+        print("num_part:", self.num_part)
+
+        self.ivf[filename] = [[] for _ in range(self.num_part)]
+
+        (self.centroids[filename], assignments) = kmeans2(
+            dataset, self.num_part, iter=self.iterations
+        )
+        # kmeans = MiniBatchKMeans(
+        #     n_clusters=self.num_part,
+        #     random_state=0,
+        #     # batch_size=2 * 256,
+        #     batch_size=len(id_of_dataset) // 20,
+        #     #   max_iter=self.iterations,
+        #     n_init="auto",
+        # )
+        # kmeans.fit(dataset)
+        # for i in range(0, len(id_of_dataset), len(id_of_dataset) // 20):
+        #     # print("i:", i)
+        #     dataset = np.loadtxt(
+        #         self.file_path,
+        #         delimiter=",",
+        #         skiprows=i,
+        #         dtype=np.float32,
+        #         usecols=range(1, 71),
+        #         max_rows=len(id_of_dataset) // 20,
+        #     )
+        #     kmeans.partial_fit(dataset.astype(np.double))
+
+        # # save the kmeans model using joblib
+        # joblib.dump(kmeans, "./kmeans_model.joblib")
+        # get the centroids and assignments
+        # self.centroids = kmeans.cluster_centers_
+        # assignments = kmeans.labels_
+        # print("centroids shape:", self.centroids.shape)
+        # print("assignments shape:", assignments.shape)
+        for n, k in enumerate(assignments):
+            # n is the index of the vector
+            # k is the index of the cluster
+            self.ivf[filename][k].append(n)
+        # save the index clusters to .csv files
+        for i, cluster in enumerate(self.ivf[filename]):
+            # cluster is a list of the indices of the vectors in the cluster inside the db
+            if len(cluster) != 0:
+                with open(f"./index/{filename}_index_{i}.csv", "w") as fout:
+                    for n in cluster:
+                        fout.write(
+                            f"{id_of_dataset[n]},{','.join(str(t) for t in dataset[n])}"
+                        )
+                        fout.write("\n")
+                # build knn index for each cluster
+                # self._KNN_build_index(f"{filename}_index_{i}.csv")
 
     def _save_hyperplanes(self, filename, plane_norms):
         with open(f"./hyperplanes/{filename}", "w") as fout:
@@ -273,9 +351,9 @@ class VecDB_lsh_one_level:
                 fout.write(",".join([str(e) for e in plane]))
                 fout.write("\n")
 
-    def _save_buckets(self, buckets, lvl: int):
+    def _save_buckets(self, buckets):
         for key, value in buckets.items():
-            with open(f"./index/{key}_{lvl}.csv", "w") as fout:
+            with open(f"./index/{key}.csv", "w") as fout:
                 # fout.write(",".join(str(e) for e in value))
                 # print(value)
                 # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
@@ -329,3 +407,12 @@ class VecDB_lsh_one_level:
             # Add the orthogonalized, normalized vector to the list
             vectors.append(vec)
         return np.array(vectors)
+
+    def _get_top_centroids(self, query, top_k, bucket_name):
+        # find the nearest centroids to the query
+        top_k_centroids = np.argsort(
+            np.linalg.norm(self.centroids[bucket_name] - np.array(query), axis=1)
+        )
+        # get the top_k centroids
+        top_k_centroids = top_k_centroids[:top_k]
+        return top_k_centroids

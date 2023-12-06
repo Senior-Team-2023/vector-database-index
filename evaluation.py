@@ -96,12 +96,13 @@ if __name__ == "__main__":
     # db = VecDBLSH()
     # db = VecDB_buckets_HNSW()
     db = IVFDB()
+    # db = VecDB_lsh_one_level()
     # db = VecDB_hnsw()
     # db = VecDB_OPQ32_IVF4096_HNSW_PQ32()
     # db = VecDB_ivf_hnsw()
     # db = VecDB_ivf_pq()
     # generate random records
-    # np.random.seed(42)  # set seed value for random number generator
+    np.random.seed(42)  # set seed value for random number generator
     records_np = np.random.random((10**5, 70))
     # convert random list to dict containing id and embed (random 70 dim vector)
     records_dict = [{"id": i, "embed": list(row)} for i, row in enumerate(records_np)]
