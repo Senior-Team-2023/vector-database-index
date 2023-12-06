@@ -3,12 +3,9 @@ from worst_case_implementation import VecDBWorst
 
 # from lsh_random_projection import VecDBLSH
 from buckets_hnsw import VecDB_buckets_HNSW
-<<<<<<< HEAD
 from ivf import IVFDB
-=======
 from OldTrials.lsh import VecDB_lsh
 from one_level_lsh import VecDB_lsh_one_level
->>>>>>> 6d792acf78c584e58e8fb621f89697dc80884950
 
 # from hnsw import VecDB_hnsw
 
