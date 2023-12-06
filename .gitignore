@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 *.csv
 *.index
+*.knn
+*.pcl
+*.pkl
+*.ids
