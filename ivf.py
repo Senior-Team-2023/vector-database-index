@@ -12,10 +12,9 @@ class IVFDB:
         self.centroids = None  # centroids of each partition
         # self.assignments = None  # assignments of each vector to a partition
         self.iterations = 32  # number of iterations for kmeans
-        # self.index = [
-        #     [] for _ in range(self.num_part)
-        # ]  # index of each vector within a partition
+        self.index = None
         self.file_path = file_path
+        self.database_size = 0
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -48,7 +47,8 @@ class IVFDB:
         # then retrieve the actual records from the database
         scores = []
         # get the top_k centroids
-        top_centroids = self._get_top_centroids(query, top_k)
+        # k = int(4*np.sqrt(len(self.centroids)))
+        top_centroids = self._get_top_centroids(query, top_k *2)
         print("top_centroids:", top_centroids)
         # load kmeans model
         # kmeans = joblib.load("./kmeans_model.joblib")
@@ -57,7 +57,7 @@ class IVFDB:
         # print("c:", c)
         # c = c[0]
         # with open(f"./index/index_{c}.csv", "r") as fin:
-        #         for row in fin.readlines():
+        #         for row in fin:
         #             row_splits = row.split(",")
         #             # the first element is id
         #             id = int(row_splits[0])
@@ -69,7 +69,7 @@ class IVFDB:
         # for each centrioed, get sorted list constains the nearest top_k vectors to it
         for centroid in top_centroids:
             with open(f"./index/index_{centroid}.csv", "r") as fin:
-                for row in fin.readlines():
+                for row in fin:
                     row_splits = row.split(",")
                     # the first element is id
                     id = int(row_splits[0])
@@ -85,32 +85,6 @@ class IVFDB:
         # print(scores)
         # return the ids of the top_k records
         return [s[1] for s in scores]
-        # get the vectors in the cluster
-        #         vectors = fin.readlines()
-        #         # print(vectors)
-        #         # get the nearest vectors to the query
-        #         nearest_vectors = sorted(
-        #             vectors,
-        #             key=lambda x: self._cal_score(
-        #                 query, np.array([float(e) for e in x.strip().split(",")[1:]])
-        #             ),
-        #             reverse=True,
-        #         )
-        #         # print(nearest_vectors)
-        #         # get the ids of the nearest vectors
-        #         nearest_ids = [int(nv.strip().split(",")[0]) for nv in nearest_vectors]
-        #         # print(nearest_ids)
-        #         # add the ids of the nearest vectors to the scores list
-        #         scores.extend(nearest_ids)
-        # # here we assume that if two rows have the same score, return the lowest ID
-        # # sort and get the top_k records
-        # # print("scores",scores)
-        # # scores = sorted(scores, reverse=True)[:top_k]
-        # scores = scores[:top_k]
-        # print("scores",scores)
-
-        # # return the ids of the top_k records
-        # return scores
 
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -136,8 +110,11 @@ class IVFDB:
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
-        # self.num_part = int(4 * np.sqrt(len(id_of_dataset)))
+        self.database_size = len(id_of_dataset)
+        self.num_part = int(np.sqrt(self.database_size))
+
         print("num_part:", self.num_part)
+        
         self.index = [[] for _ in range(self.num_part)]
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
@@ -178,16 +155,14 @@ class IVFDB:
         for i, cluster in enumerate(self.index):
             with open(f"./index/index_{i}.csv", "w") as fout:
                 for n in cluster:
-                    fout.write(
-                        f"{id_of_dataset[n]},{','.join(str(t) for t in dataset[n])}"
-                    )
-                    fout.write("\n")
+                    fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
 
-    def _get_top_centroids(self, query, top_k):
+
+    def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
         top_k_centroids = np.argsort(
             np.linalg.norm(self.centroids - np.array(query), axis=1)
         )
         # get the top_k centroids
-        top_k_centroids = top_k_centroids[:top_k]
+        top_k_centroids = top_k_centroids[:k]
         return top_k_centroids
