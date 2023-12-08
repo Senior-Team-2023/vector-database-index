@@ -47,8 +47,8 @@ class IVFDB:
         # then retrieve the actual records from the database
         scores = []
         # get the top_k centroids
-        # k = int(4*np.sqrt(len(self.centroids)))
-        top_centroids = self._get_top_centroids(query, top_k *2)
+        k = int(1.5 * np.sqrt(len(self.centroids)))
+        top_centroids = self._get_top_centroids(query, k)
         print("top_centroids:", top_centroids)
         # load kmeans model
         # kmeans = joblib.load("./kmeans_model.joblib")
@@ -77,7 +77,6 @@ class IVFDB:
                     embed = [float(e) for e in row_splits[1:]]
                     score = self._cal_score(query, embed)
                     # append a tuple of score and id to scores
-                    # if (score, id) not in scores:
                     scores.append((score, id))
         # here we assume that if two rows have the same score, return the lowest ID
         # sort and get the top_k records
@@ -114,7 +113,7 @@ class IVFDB:
         self.num_part = int(np.sqrt(self.database_size))
 
         print("num_part:", self.num_part)
-        
+
         self.index = [[] for _ in range(self.num_part)]
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
@@ -156,7 +155,6 @@ class IVFDB:
             with open(f"./index/index_{i}.csv", "w") as fout:
                 for n in cluster:
                     fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
-
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
