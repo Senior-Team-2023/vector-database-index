@@ -161,4 +161,6 @@ cython_debug/
 *.csv
 *.index
 *.knn
+*.pcl
+*.pkl
 *.ids
