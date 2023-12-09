@@ -67,23 +67,60 @@ class IVFDB:
         #             # append a tuple of score and id to scores
         #             scores.append((score, id))
         # for each centrioed, get sorted list constains the nearest top_k vectors to it
+        # cosine_similarity_id = []
+        cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
-            with open(f"./index/index_{centroid}.csv", "r") as fin:
-                for row in fin:
-                    row_splits = row.split(",")
-                    # the first element is id
-                    id = int(row_splits[0])
-                    # the rest are embed
-                    embed = [float(e) for e in row_splits[1:]]
-                    score = self._cal_score(query, embed)
-                    # append a tuple of score and id to scores
-                    scores.append((score, id))
-        # here we assume that if two rows have the same score, return the lowest ID
-        # sort and get the top_k records
-        scores = sorted(scores, reverse=True)[:top_k]
+            try:
+                fp = np.memmap(
+                    f"./index/index_{centroid}.dta",
+                    dtype="float32",
+                    mode="r",
+                    shape=(self.index[centroid].shape[0], 71),
+                )
+            except FileNotFoundError:
+                continue
+            id = fp[:, 0].astype(np.int32)
+            # print("id:", id)
+            # print("id shape:", id.shape)
+            embed = fp[:, 1:]
+            cosine_similarity_list = self._vectorized_cal_score(embed, query)
+            # cosine_similarity_list = np.vectorize(
+            #     self._vectorized_cal_score,
+            #     signature=f"({self.index[centroid].shape[0]},70),(1,70)->(70)",
+            # )(embed, query)
+            # print("cosine_similarity_list:", cosine_similarity_list)
+            # print("cosine_similarity_list shape:", cosine_similarity_list.shape)
+
+            # scores = [(s, i) for s, i in zip(scores, id)]
+            cosine_similarity_id = np.column_stack((cosine_similarity_list, id))
+            # cosine_similarity_id = np.concatenate((cosine_similarity_id, id), axis=1)
+            # print("cosine_similarity_id:", cosine_similarity_id)
+            # print("cosine_similarity_id shape:", cosine_similarity_id.shape)
+            cosine_similarity_id_total = np.concatenate(
+                (cosine_similarity_id_total, cosine_similarity_id), axis=0
+            )
+
+        sorted_indices = np.argsort(cosine_similarity_id_total[:, 0])
+
+        # Sort 'scores_id_array' by 'scores' using the sorted indices
+        scores = cosine_similarity_id_total[sorted_indices[::-1]]
+        # print("scores:", scores)
+        #     with open(f"./index/index_{centroid}.csv", "r") as fin:
+        #         for row in fin:
+        #             row_splits = row.split(",")
+        #             # the first element is id
+        #             id = int(row_splits[0])
+        #             # the rest are embed
+        #             embed = [float(e) for e in row_splits[1:]]
+        #             score = self._cal_score(query, embed)
+        #             # append a tuple of score and id to scores
+        #             scores.append((score, id))
+        # # here we assume that if two rows have the same score, return the lowest ID
+        # # sort and get the top_k records
+        # scores = sorted(scores, reverse=True)[:top_k]
         # print(scores)
         # return the ids of the top_k records
-        return [s[1] for s in scores]
+        return scores[:top_k, 1].astype(np.int32)
 
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -91,6 +128,25 @@ class IVFDB:
         norm_vec2 = np.linalg.norm(vec2)
         cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
         return cosine_similarity
+
+    def _vectorized_cal_score(self, vec1, vec2):
+        vec2_broadcasted = np.broadcast_to(vec2, vec1.shape)
+
+        # Calculate the dot product between each vector in vec1 and the broadcasted vec2
+        dot_product = np.sum(vec1 * vec2_broadcasted, axis=1)
+        # Calculate the dot product between each vector in vec1 and vec2
+        # dot_product = np.dot(vec1, vec2.T)
+
+        # Calculate the norm of each vector in vec1
+        norm_vec1 = np.linalg.norm(vec1, axis=1)
+
+        # Calculate the norm of vec2
+        norm_vec2 = np.linalg.norm(vec2)
+
+        # Calculate the cosine similarity for each pair of vectors
+        cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
+
+        return cosine_similarity.squeeze()
 
     def _build_index(self):
         # TODO: build index for the database
@@ -114,7 +170,14 @@ class IVFDB:
 
         print("num_part:", self.num_part)
 
-        self.index = [[] for _ in range(self.num_part)]
+        # self.index = [[] for _ in range(self.num_part)]
+        # using numpy
+        self.index = np.empty(self.num_part, dtype=object)
+        for i in range(self.num_part):
+            # self.index[i] = np.memmap(
+            #     f"./index/index_{i}.dta", dtype="float32", mode="w+"
+            # )
+            self.index[i] = []
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
         )
@@ -149,12 +212,34 @@ class IVFDB:
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
+
             self.index[k].append(n)
+
+        # convert the index to numpy array
+        self.index = np.array(self.index)
+        # self.index = np.array(self.index)
         # save the index clusters to .csv files
-        for i, cluster in enumerate(self.index):
-            with open(f"./index/index_{i}.csv", "w") as fout:
-                for n in cluster:
-                    fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
+        # for i, cluster in enumerate(self.index):
+        #     with open(f"./index/index_{i}.csv", "w") as fout:
+        #         for n in cluster:
+        #             fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
+        for i in range(len(self.index)):
+            if len(self.index[i]) == 0:
+                continue
+            cluster = self.index[i]
+            self.index[i] = np.memmap(
+                f"./index/index_{i}.dta",
+                dtype="float32",
+                mode="w+",
+                shape=(len(cluster), 71),
+            )
+            for n, id in enumerate(cluster):
+                self.index[i][n][0] = id
+                self.index[i][n][1:] = dataset[id]
+            # self.index[i][:] = cluster
+            # with open(f"./index/index_{i}.csv", "w") as fout:
+            #     for n in cluster:
+            #         fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
