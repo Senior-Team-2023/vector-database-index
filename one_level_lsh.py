@@ -4,6 +4,7 @@ import numpy as np
 import faiss
 from sklearn.neighbors import KNeighborsClassifier
 import pickle
+from itertools import product
 
 # from memory_profiler import profile
 
@@ -14,7 +15,7 @@ class VecDB_lsh_one_level:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 5
+        self.plane_nbits = 7
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -48,6 +49,9 @@ class VecDB_lsh_one_level:
 
     # @profile
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
+        probing = int(2 * np.sqrt(2**self.plane_nbits))
+        # probing = 2
+        print(f"Probing {probing} buckets...")
         # --------HNSW---------
         print("Retrieving...")
         # print("Calculating binary vector of query...")
@@ -55,12 +59,46 @@ class VecDB_lsh_one_level:
         # print(query_binary_vec)
         # to get the binary value of the vector as a string
         query_binary_str = "".join(query_binary_vec[0].astype(str))
+        # for i in range(probing):
+        nearest_buckets = self._nearest_strings(query_binary_str, probing)
         # -------Worst case---------
         # return self._retrieve_worst_case(query, top_k, query_binary_str)
-        # -------HNSW---------
-        # return self._retrieve_HNSW(query, top_k, query_binary_str)
         # -------KNN---------
-        return self._retrieve_KNN(query, top_k, query_binary_str)
+        ids, embeds = self._retrieve_KNN(query, top_k, query_binary_str)
+        for bucket in nearest_buckets:
+            # print(f"Probing bucket {bucket}...")
+            ids1, embeds1 = self._retrieve_KNN(query, top_k, bucket)
+            if len(ids1) == 0:
+                continue
+            ids.extend(ids1)
+            embeds = np.concatenate((embeds, embeds1))
+            # embeds.extend(embeds1)
+            # scores.extend(self._retrieve_KNN(query, top_k, bucket))
+        ids = np.array(ids)
+        cosine_similarity_list = self._vectorized_cal_score(embeds, query)
+        # print("Cosine similarity shape:", cosine_similarity_list.shape)
+        cosine_similarity_id = np.column_stack((cosine_similarity_list, ids))
+        # print("Cosine similarity id shape:", cosine_similarity_id.shape)
+        sorted_indices = np.argsort(cosine_similarity_id[:, 0])
+
+        # Sort 'scores_id_array' by 'scores' using the sorted indices
+        scores = cosine_similarity_id[sorted_indices[::-1]]
+        # print("Scores:", scores)
+        return scores[:top_k, 1].astype(np.int32)
+        # return self._retrieve_KNN(query, top_k, query_binary_str)
+
+    def _hamming_distance(self, str1, str2):
+        return sum(c1 != c2 for c1, c2 in zip(str1, str2))
+
+    def _nearest_strings(self, binary_string, m):
+        n = len(binary_string)
+        all_strings = ["".join(bits) for bits in product("01", repeat=n)]
+        distances = [
+            (other_str, self._hamming_distance(binary_string, other_str))
+            for other_str in all_strings
+        ]
+        distances.sort(key=lambda x: x[1])
+        return [str_dist[0] for str_dist in distances[1 : m + 1]]
 
     def _retrieve_worst_case(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
@@ -68,7 +106,7 @@ class VecDB_lsh_one_level:
         # ------- Worst Case (for loop) ----------
         scores = []
         # open database file to read
-        with open(f"./index/{query_binary_str}_{0}.csv.", "r") as fin:
+        with open(f"./index/{query_binary_str}.csv", "r") as fin:
             # search through the file line by line (sequentially)
             # each row is a record
             for row in fin.readlines():
@@ -87,36 +125,17 @@ class VecDB_lsh_one_level:
         # return the ids of the top_k records
         return [s[1] for s in scores]
 
-    def _retrieve_HNSW(
-        self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
-    ):
-        print(f"Loading corresponding HNSW index {query_binary_str}...")
-        try:
-            loaded_index = faiss.read_index(f"./index/{query_binary_str}_{0}.csv.index")
-        except FileNotFoundError:
-            print(f"KNN index {query_binary_str} not found")
-        distances, labels = loaded_index.search(query, top_k)
-
-        # print("distances", distances)
-        # print("labels", labels)
-        # calculate the score for each vector in the bucket
-        print("Calculating score...")
-        scores = [(distances[0][i], labels[0][i]) for i in range(len(labels[0]))]
-        scores = sorted(scores)[:top_k]
-        # return the ids of the top_k records
-        # print(scores)
-        return [s[1] for s in scores]
-
     def _retrieve_KNN(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
     ):
         print(f"Loading corresponding KNN index {query_binary_str}...")
         try:
             loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}_{0}.csv.knn", "rb")
+                open(f"./index/{query_binary_str}.csv.knn", "rb")
             )
         except FileNotFoundError:
             print(f"KNN index {query_binary_str} not found")
+            return np.array([]), np.array([[]])
 
         try:
             distances, indices = loaded_index.kneighbors(query, n_neighbors=top_k)
@@ -125,28 +144,28 @@ class VecDB_lsh_one_level:
             n_neighbors = int(e.args[0][n_neighbors_i])
             print(f"n_neighbors = {n_neighbors}")
             distances, indices = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
-        # print("distances", distances)
-        # print("indices", indices)
-        # calculate the score for each vector in the bucket
-        print("Calculating score...")
-        # scores = [(distances[0][i], indices[0][i]) for i in range(len(indices[0]))]
-        # scores = sorted(scores)[:top_k]
-        # Sort the neighbors by distance
-        sorted_neighbors = sorted(zip(indices[0], distances[0]), key=lambda x: x[1])
-
         # Retrieve the corresponding IDs for the sorted neighbors
-
-        ids = []
-        with open(f"./index/{query_binary_str}_{0}.csv.ids", "r") as fin:
-            for row in fin.readlines():
-                id = int(row)
-                ids.append(id)
-                # the rest are embed
-        sorted_ids = [ids[idx] for idx, _ in sorted_neighbors][:top_k]
-
-        # return the ids of the top_k records
-        print(sorted_ids)
-        return sorted_ids
+        ids = np.loadtxt(
+            f"./index/{query_binary_str}.csv",
+            delimiter=",",
+            skiprows=0,
+            dtype=np.int32,
+            usecols=0,
+        )
+        if len(indices[0]) == 1:
+            ids = np.array([ids])
+        dataset = np.loadtxt(
+            f"./index/{query_binary_str}.csv",
+            delimiter=",",
+            skiprows=0,
+            dtype=np.float32,
+            usecols=range(1, 71),
+        )
+        if len(indices[0]) == 1:
+            dataset = np.array([dataset])
+        real_ids = [ids[idx] for idx in indices[0]]
+        embeds = [dataset[idx] for idx in indices[0]]
+        return real_ids, embeds
 
     def _cal_score(self, vec1, vec2):
         dot_product = np.dot(vec1, vec2)
@@ -154,6 +173,25 @@ class VecDB_lsh_one_level:
         norm_vec2 = np.linalg.norm(vec2)
         cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
         return cosine_similarity
+
+    def _vectorized_cal_score(self, vec1, vec2):
+        vec2_broadcasted = np.broadcast_to(vec2, vec1.shape)
+
+        # Calculate the dot product between each vector in vec1 and the broadcasted vec2
+        dot_product = np.sum(vec1 * vec2_broadcasted, axis=1)
+        # Calculate the dot product between each vector in vec1 and vec2
+        # dot_product = np.dot(vec1, vec2.T)
+
+        # Calculate the norm of each vector in vec1
+        norm_vec1 = np.linalg.norm(vec1, axis=1)
+
+        # Calculate the norm of vec2
+        norm_vec2 = np.linalg.norm(vec2)
+
+        # Calculate the cosine similarity for each pair of vectors
+        cosine_similarity = dot_product / (norm_vec1 * norm_vec2)
+
+        return cosine_similarity.squeeze()
 
     def _build_index(self):
         # TODO: build index for the database
@@ -194,37 +232,13 @@ class VecDB_lsh_one_level:
                 buckets[hash_str].append((id, embed))
 
         # save the parent database
-        self._save_buckets(buckets, 0)  # save for any bucket
+        self._save_buckets(buckets)  # save for any bucket
         # loop over the buckets
         for k, v in buckets.items():
             # HNSW
             # self._HNSW_build_index(f"{k}_{str(0)}.csv")
             # KNN
-            self._KNN_build_index(f"{k}_{str(0)}.csv")
-
-    def _HNSW_build_index(self, filename: str):
-        # open each file inside the index folder
-        if filename.endswith(".csv"):
-            bucket_rec = []
-            with open(f"./index/{filename}", "r") as fin:
-                for row in fin.readlines():
-                    row_splits = row.split(",")
-                    # the first element is id
-                    id = int(row_splits[0])
-                    # the rest are embed
-                    embed = [float(e) for e in row_splits[1:]]
-                    embed = np.array(embed)
-                    bucket_rec.append((id, embed))
-                # build the HNSW index
-                # print("bucket_rec", bucket_rec)
-                # bucket_rec = np.array(bucket_rec)
-                self._HNSW_index(
-                    data=bucket_rec,
-                    m=128,
-                    ef_construction=200,
-                    ef_search=32,
-                    filename=filename,
-                )
+            self._KNN_build_index(f"{k}.csv")
 
     def _KNN_build_index(self, filename: str):
         # open each file inside the index folder
@@ -249,48 +263,20 @@ class VecDB_lsh_one_level:
                 with open(f"./index/{filename}.knn", "wb") as fout:
                     pickle.dump(knn, fout)
                 # save a file that contains the list of ids
-                with open(f"./index/{filename}.ids", "w") as fout:
-                    for e in bucket_rec:
-                        fout.write(str(e[0]))
-                        fout.write("\n")
+                # with open(f"./index/{filename}.ids", "w") as fout:
+                #     for e in bucket_rec:
+                #         fout.write(str(e[0]))
+                #         fout.write("\n")
 
-    def _HNSW_index(self, data, m, ef_construction, filename, ef_search):
-        index = faiss.IndexHNSWFlat(self.d, m)
-        # set efConstruction and efSearch parameters
-        index.hnsw.efConstruction = ef_construction
-        index.hnsw.efSearch = ef_search
-        # Wrap the index with IDMap
-        id_map = faiss.IndexIDMap(index)
-        id_map.add_with_ids(
-            np.array([e[1] for e in data]), np.array([e[0] for e in data])
-        )
-        # save the index
-        faiss.write_index(id_map, f"./index/{filename}.index")
-
-    def _save_hyperplanes(self, filename, plane_norms):
-        with open(f"./hyperplanes/{filename}", "w") as fout:
-            for plane in plane_norms:
-                fout.write(",".join([str(e) for e in plane]))
-                fout.write("\n")
-
-    def _save_buckets(self, buckets, lvl: int):
+    def _save_buckets(self, buckets):
         for key, value in buckets.items():
-            with open(f"./index/{key}_{lvl}.csv", "w") as fout:
+            with open(f"./index/{key}.csv", "w") as fout:
                 # fout.write(",".join(str(e) for e in value))
                 # print(value)
                 # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
                 for e in value:
                     fout.write(str(e[0]) + "," + ",".join(str(t) for t in e[1]))
                     fout.write("\n")
-
-    def _load_hyperplanes(self, filename):
-        plane_norms = []
-        with open(f"./hyperplanes/{filename}.csv", "r") as fin:
-            for line in fin.readlines():
-                plane_norm = line.split(",")
-                plane_norm = [float(e) for e in plane_norm]
-                plane_norms.append(plane_norm)
-        return np.array(plane_norms)
 
     def _load_buckets(self, key):
         buckets = []
@@ -320,7 +306,7 @@ class VecDB_lsh_one_level:
             # Generate a random vector
             random_shift = np.random.randn(1)
             # random_shift = random_shift if random_shift < 0.9 else 0
-            vec = np.random.randn(d) - random_shift
+            vec = np.random.randn(d)
             # Orthogonalize it against all previously generated vectors
             for basis in vectors:
                 vec -= np.dot(vec, basis) * basis
