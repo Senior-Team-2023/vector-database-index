@@ -152,9 +152,9 @@ class IVFDB:
         # TODO: build index for the database
         print("Building index...")
         # read the database file from csv file
-        id_of_dataset = np.loadtxt(
-            self.file_path, delimiter=",", skiprows=0, dtype=np.int32, usecols=0
-        )
+        # id_of_dataset = np.loadtxt(
+        #     self.file_path, delimiter=",", skiprows=0, dtype=np.int32, usecols=0
+        # )
         # print("id_of_dataset shape:", id_of_dataset.shape)
         dataset = np.loadtxt(
             self.file_path,
@@ -165,12 +165,11 @@ class IVFDB:
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
-        self.database_size = len(id_of_dataset)
+        self.database_size = len(dataset)
         self.num_part = int(np.sqrt(self.database_size))
 
         print("num_part:", self.num_part)
 
-        # self.index = [[] for _ in range(self.num_part)]
         # using numpy
         self.index = np.empty(self.num_part, dtype=object)
         for i in range(self.num_part):
@@ -212,7 +211,6 @@ class IVFDB:
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
-
             self.index[k].append(n)
 
         # convert the index to numpy array
@@ -236,10 +234,6 @@ class IVFDB:
             for n, id in enumerate(cluster):
                 self.index[i][n][0] = id
                 self.index[i][n][1:] = dataset[id]
-            # self.index[i][:] = cluster
-            # with open(f"./index/index_{i}.csv", "w") as fout:
-            #     for n in cluster:
-            #         fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
