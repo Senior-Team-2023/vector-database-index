@@ -6,7 +6,7 @@ from typing import Dict, List, Annotated
 # import joblib
 
 
-class IVFDB:
+class VecDB:
     # constructor
     def __init__(self, file_path="saved_db.csv", new_db=True):
         self.num_part = 32  # number of partitions
@@ -50,7 +50,7 @@ class IVFDB:
         # then retrieve the actual records from the database
         scores = []
         # get the top_k centroids
-        k = int(2 * np.sqrt(self.num_part))
+        k = int(4 * np.sqrt(self.num_part))
         top_centroids = self._get_top_centroids(query, k)
         print("top_centroids:", top_centroids)
         # load kmeans model
