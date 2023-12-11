@@ -15,7 +15,7 @@ class VecDB_lsh_probing:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 10
+        self.plane_nbits = 11
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -50,6 +50,7 @@ class VecDB_lsh_probing:
     # @profile
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
         probing = int(2 * np.sqrt(2**self.plane_nbits))
+        # probing = probing if probing < 100 else 100
         # probing = 2
         print(f"Probing {probing} buckets...")
         # --------HNSW---------
@@ -126,14 +127,14 @@ class VecDB_lsh_probing:
     def _retrieve_KNN(
         self, query: Annotated[List[float], 70], top_k=5, query_binary_str=""
     ):
-        print(f"Loading corresponding KNN index {query_binary_str}...")
+        # print(f"Loading corresponding KNN index {query_binary_str}...")
         try:
             loaded_index = pickle.load(
                 # open(f"./index/{query_binary_str}.csv.knn", "rb")
                 open(f"./index/{query_binary_str}.dta.knn", "rb")
             )
         except FileNotFoundError:
-            print(f"KNN index {query_binary_str} not found")
+            # print(f"KNN index {query_binary_str} not found")
             return np.array([]), np.array([[]])
 
         try:
@@ -141,7 +142,7 @@ class VecDB_lsh_probing:
         except ValueError as e:
             n_neighbors_i = e.args[0].index("n_samples = ") + len("n_samples = ")
             n_neighbors = int(e.args[0][n_neighbors_i])
-            print(f"n_neighbors = {n_neighbors}")
+            # print(f"n_neighbors = {n_neighbors}")
             distances, indices = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
         # print("indices:", indices)
         file_path = f"./index/{query_binary_str}.dta"
@@ -192,6 +193,7 @@ class VecDB_lsh_probing:
         # ---- 1. random projection ----
         # create a set of nbits hyperplanes, with d dimensions
         # self._plane_norms = (np.random.rand(self.plane_nbits, self.d) - 0.5) * 2
+        # self._plane_norms = np.random.rand(self.plane_nbits, self.d)
         self._plane_norms = self.generate_orthogonal_vectors(self.plane_nbits, self.d)
 
         # open database file to read
@@ -241,7 +243,6 @@ class VecDB_lsh_probing:
         # open each file inside the index folder
         # if filename.endswith(".csv"):
         if filename.endswith(".dta"):
-            bucket_rec = []
             file_path = f"./index/{filename}"
             file_size = os.path.getsize(file_path)
 
