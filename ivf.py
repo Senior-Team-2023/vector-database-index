@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
+
 # from sklearn.cluster import MiniBatchKMeans
 # import joblib
 
@@ -27,6 +28,7 @@ class IVFDB:
             # TODO: keep track of the last id in the database,
             # to start the new index from it, if the database is not empty,
             # and if the index algorithm requires it
+            self.database_size = len(rows)
             for row in rows:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
@@ -162,10 +164,15 @@ class IVFDB:
             skiprows=0,
             dtype=np.float32,
             usecols=range(1, 71),
+            max_rows=np.min(
+                10**6,
+                int(self.database_size * 0.1)
+                if self.database_size >= 10**6
+                else None,
+            ),
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
-        self.database_size = len(dataset)
         self.num_part = int(np.sqrt(self.database_size))
 
         print("num_part:", self.num_part)

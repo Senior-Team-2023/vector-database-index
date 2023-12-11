@@ -2,10 +2,10 @@ import numpy as np
 from worst_case_implementation import VecDBWorst
 
 # from lsh_random_projection import VecDBLSH
-from buckets_hnsw import VecDB_buckets_HNSW
+# from buckets_hnsw import VecDB_buckets_HNSW
 from ivf import IVFDB
-from OldTrials.lsh import VecDB_lsh
-from one_level_lsh import VecDB_lsh_one_level
+# from OldTrials.lsh import VecDB_lsh
+# from one_level_lsh import VecDB_lsh_one_level
 
 # from hnsw import VecDB_hnsw
 
