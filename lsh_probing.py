@@ -15,7 +15,7 @@ class VecDB_lsh_probing:
         self.d = 70  # vector dimensions
         self.max_levels = 0
         self.cos_threshold = 0.87
-        self.plane_nbits = 7
+        self.plane_nbits = 10
         if new_db:
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
@@ -70,11 +70,9 @@ class VecDB_lsh_probing:
             ids1, embeds1 = self._retrieve_KNN(query, top_k, bucket)
             if len(ids1) == 0:
                 continue
-            ids.extend(ids1)
+            # ids.extend(ids1)
+            ids = np.concatenate((ids, ids1))
             embeds = np.concatenate((embeds, embeds1))
-            # embeds.extend(embeds1)
-            # scores.extend(self._retrieve_KNN(query, top_k, bucket))
-        ids = np.array(ids)
         cosine_similarity_list = self._vectorized_cal_score(embeds, query)
         # print("Cosine similarity shape:", cosine_similarity_list.shape)
         cosine_similarity_id = np.column_stack((cosine_similarity_list, ids))
@@ -131,7 +129,8 @@ class VecDB_lsh_probing:
         print(f"Loading corresponding KNN index {query_binary_str}...")
         try:
             loaded_index = pickle.load(
-                open(f"./index/{query_binary_str}.csv.knn", "rb")
+                # open(f"./index/{query_binary_str}.csv.knn", "rb")
+                open(f"./index/{query_binary_str}.dta.knn", "rb")
             )
         except FileNotFoundError:
             print(f"KNN index {query_binary_str} not found")
@@ -144,27 +143,21 @@ class VecDB_lsh_probing:
             n_neighbors = int(e.args[0][n_neighbors_i])
             print(f"n_neighbors = {n_neighbors}")
             distances, indices = loaded_index.kneighbors(query, n_neighbors=n_neighbors)
-        # Retrieve the corresponding IDs for the sorted neighbors
-        ids = np.loadtxt(
-            f"./index/{query_binary_str}.csv",
-            delimiter=",",
-            skiprows=0,
-            dtype=np.int32,
-            usecols=0,
+        # print("indices:", indices)
+        file_path = f"./index/{query_binary_str}.dta"
+        file_size = os.path.getsize(file_path)
+        # Calculate the number of rows, knowing each row has 71 columns of type float32 (4 bytes each)
+        num_columns = 71
+        bytes_per_row = num_columns * 4  # float32 has 4 bytes
+        num_rows = file_size // bytes_per_row
+        fp = np.memmap(
+            file_path,
+            dtype="float32",
+            mode="r",
+            shape=(num_rows, num_columns),
         )
-        if len(indices[0]) == 1:
-            ids = np.array([ids])
-        dataset = np.loadtxt(
-            f"./index/{query_binary_str}.csv",
-            delimiter=",",
-            skiprows=0,
-            dtype=np.float32,
-            usecols=range(1, 71),
-        )
-        if len(indices[0]) == 1:
-            dataset = np.array([dataset])
-        real_ids = [ids[idx] for idx in indices[0]]
-        embeds = [dataset[idx] for idx in indices[0]]
+        real_ids = fp[indices[0], 0].astype(np.int32)
+        embeds = fp[indices[0], 1:]
         return real_ids, embeds
 
     def _cal_score(self, vec1, vec2):
@@ -232,51 +225,64 @@ class VecDB_lsh_probing:
                 buckets[hash_str].append((id, embed))
 
         # save the parent database
+        keys = list(buckets.keys())
         self._save_buckets(buckets)  # save for any bucket
+        # get list of keys from buckets
         # loop over the buckets
-        for k, v in buckets.items():
+        del buckets
+        for k in keys:
             # HNSW
             # self._HNSW_build_index(f"{k}_{str(0)}.csv")
             # KNN
-            self._KNN_build_index(f"{k}.csv")
+            # self._KNN_build_index(f"{k}.csv")
+            self._KNN_build_index(f"{k}.dta")
 
     def _KNN_build_index(self, filename: str):
         # open each file inside the index folder
-        if filename.endswith(".csv"):
+        # if filename.endswith(".csv"):
+        if filename.endswith(".dta"):
             bucket_rec = []
-            with open(f"./index/{filename}", "r") as fin:
-                for row in fin.readlines():
-                    row_splits = row.split(",")
-                    # the first element is id
-                    id = int(row_splits[0])
-                    # the rest are embed
-                    embed = [float(e) for e in row_splits[1:]]
-                    embed = np.array(embed)
-                    bucket_rec.append((id, embed))
-                knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+            file_path = f"./index/{filename}"
+            file_size = os.path.getsize(file_path)
 
-                knn.fit(
-                    np.array([e[1] for e in bucket_rec]),
-                    np.array([e[0] for e in bucket_rec]),
-                )
-                # save the index using pickle
-                with open(f"./index/{filename}.knn", "wb") as fout:
-                    pickle.dump(knn, fout)
-                # save a file that contains the list of ids
-                # with open(f"./index/{filename}.ids", "w") as fout:
-                #     for e in bucket_rec:
-                #         fout.write(str(e[0]))
-                #         fout.write("\n")
+            # Calculate the number of rows, knowing each row has 71 columns of type float32 (4 bytes each)
+            num_columns = 71
+            bytes_per_row = num_columns * 4  # float32 has 4 bytes
+            num_rows = file_size // bytes_per_row
+            fp = np.memmap(
+                file_path,
+                dtype="float32",
+                mode="r",
+                shape=(num_rows, num_columns),
+            )
+            knn = KNeighborsClassifier(n_neighbors=10, metric="cosine")
+
+            knn.fit(
+                fp[:, 1:],  # skip the first column (id)
+                fp[:, 0].astype(np.int32),  # only the first column (id)
+            )
+            with open(f"./index/{filename}.knn", "wb") as fout:
+                pickle.dump(knn, fout)
 
     def _save_buckets(self, buckets):
         for key, value in buckets.items():
-            with open(f"./index/{key}.csv", "w") as fout:
-                # fout.write(",".join(str(e) for e in value))
-                # print(value)
-                # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
-                for e in value:
-                    fout.write(str(e[0]) + "," + ",".join(str(t) for t in e[1]))
-                    fout.write("\n")
+            fp = np.memmap(
+                f"./index/{key}.dta",
+                dtype="float32",
+                mode="w+",
+                shape=(len(value), 71),
+            )
+            for n, e in enumerate(value):
+                fp[n, 0] = e[0]
+                fp[n, 1:] = e[1]
+            fp.flush()
+            # with open(f"./index/{key}.csv", "w") as fout:
+            #     # fout.write(",".join(str(e) for e in value))
+            #     # print(value)
+            #     # NOTE: mo4kla bemoi ali nseha fel level <3 <3 <3
+            #     for e in value:
+            #         fout.write(str(e[0]) + "," + ",".join(str(t) for t in e[1]))
+            #         fout.write("\n")
 
     def _load_buckets(self, key):
         buckets = []
