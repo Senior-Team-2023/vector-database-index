@@ -50,7 +50,7 @@ class IVFDB:
         # then retrieve the actual records from the database
         scores = []
         # get the top_k centroids
-        k = int(1.5 * np.sqrt(len(self.centroids)))
+        k = int(2 * np.sqrt(self.num_part))
         top_centroids = self._get_top_centroids(query, k)
         print("top_centroids:", top_centroids)
         # load kmeans model
@@ -241,6 +241,7 @@ class IVFDB:
             for n, id in enumerate(cluster):
                 self.index[i][n][0] = id
                 self.index[i][n][1:] = dataset[id]
+
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
