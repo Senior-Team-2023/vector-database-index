@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
-from sklearn.cluster import MiniBatchKMeans
-import joblib
+# from sklearn.cluster import MiniBatchKMeans
+# import joblib
 
 
 class IVFDB:
