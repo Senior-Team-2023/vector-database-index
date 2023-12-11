@@ -22,13 +22,14 @@ class VecDB:
                 # if you need to add any head to the file
                 pass
 
-    def insert_records(self, rows: List[Dict[int, Annotated[List[float], 70]]]):
+    def insert_records(self, rows: List[Dict[int, Annotated[List[float], 70]]],build_index=True):
         # rows is a list of dictionary, each dictionary is a record
         with open(self.file_path, "a+") as fout:
             # TODO: keep track of the last id in the database,
             # to start the new index from it, if the database is not empty,
             # and if the index algorithm requires it
-            self.database_size = len(rows)
+            self.database_size += len(rows)
+
             print("database_size:", self.database_size)
             for row in rows:
                 # get id and embed from dictionary
@@ -41,7 +42,8 @@ class VecDB:
                 fout.write(f"{row_str}\n")
         # build index after inserting all records,
         # whether on new records only or on the whole database
-        self._build_index()
+        if build_index:
+            self._build_index()
 
     # Worst case implementation for retrieve
     # Because it is sequential search
@@ -241,7 +243,6 @@ class VecDB:
             for n, id in enumerate(cluster):
                 self.index[i][n][0] = id
                 self.index[i][n][1:] = dataset[id]
-
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
