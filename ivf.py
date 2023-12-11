@@ -29,6 +29,7 @@ class IVFDB:
             # to start the new index from it, if the database is not empty,
             # and if the index algorithm requires it
             self.database_size = len(rows)
+            print("database_size:", self.database_size)
             for row in rows:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
@@ -79,6 +80,8 @@ class IVFDB:
                     mode="r",
                     shape=(self.index[centroid].shape[0], 71),
                 )
+                # print number of vectors in this cluster
+                print(f"centroid {centroid} shape:", fp.shape)
             except FileNotFoundError:
                 continue
             id = fp[:, 0].astype(np.int32)
@@ -164,12 +167,9 @@ class IVFDB:
             skiprows=0,
             dtype=np.float32,
             usecols=range(1, 71),
-            max_rows=np.min(
-                10**6,
-                int(self.database_size * 0.1)
-                if self.database_size >= 10**6
-                else None,
-            ),
+            max_rows=min(10**6, int(self.database_size * 0.5))
+            if self.database_size >= 10**6
+            else None,
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
