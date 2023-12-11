@@ -1,0 +1,9 @@
+Collecting memory-profiler
+  Downloading memory_profiler-0.61.0-py3-none-any.whl (31 kB)
+Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)
+Installing collected packages: memory-profiler
+Successfully installed memory-profiler-0.61.0
+Requirement already satisfied: memory-profiler in c:\users\peter\appdata\local\programs\python\python311\lib\site-packages (0.61.0)
+Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)
+Requirement already satisfied: memory-profiler in c:\users\peter\appdata\local\programs\python\python311\lib\site-packages (0.61.0)
+Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)
