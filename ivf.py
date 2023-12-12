@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
+from sklearn.decomposition import PCA
 
 # from sklearn.cluster import MiniBatchKMeans
 # import joblib
@@ -22,7 +23,9 @@ class VecDB:
                 # if you need to add any head to the file
                 pass
 
-    def insert_records(self, rows: List[Dict[int, Annotated[List[float], 70]]],build_index=True):
+    def insert_records(
+        self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
+    ):
         # rows is a list of dictionary, each dictionary is a record
         with open(self.file_path, "a+") as fout:
             # TODO: keep track of the last id in the database,
@@ -163,18 +166,25 @@ class VecDB:
         #     self.file_path, delimiter=",", skiprows=0, dtype=np.int32, usecols=0
         # )
         # print("id_of_dataset shape:", id_of_dataset.shape)
+        # batch_size = a5t ad eh mn al db awel mara
+        batch_size = (
+            min(10**6, int(self.database_size * 0.5))
+            if self.database_size >= 10**6
+            else self.database_size
+        )
         dataset = np.loadtxt(
             self.file_path,
             delimiter=",",
             skiprows=0,
             dtype=np.float32,
             usecols=range(1, 71),
-            # max_rows=min(10**6, int(self.database_size * 0.5))
-            # if self.database_size >= 10**6
-            # else None, #TODO: try with and without max_rows
+            max_rows=min(10**6, int(self.database_size * 0.5))
+            if self.database_size >= 10**6
+            else None,
+            # max_rows=10**6
+            # if self.database_size > 10**6
+            # else None,
         )
-        # print("dataset shape:", dataset.shape)
-        # print("dataset[0]:", dataset[0])
         self.num_part = int(np.sqrt(self.database_size))
 
         # print("num_part:", self.num_part)
@@ -182,45 +192,49 @@ class VecDB:
         # using numpy
         self.index = np.empty(self.num_part, dtype=object)
         for i in range(self.num_part):
-            # self.index[i] = np.memmap(
-            #     f"./index/index_{i}.dta", dtype="float32", mode="w+"
-            # )
             self.index[i] = []
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
         )
-        # kmeans = MiniBatchKMeans(
-        #     n_clusters=self.num_part,
-        #     random_state=0,
-        #     # batch_size=2 * 256,
-        #     batch_size=len(id_of_dataset) // 20,
-        #     #   max_iter=self.iterations,
-        #     n_init="auto",
-        # )
-        # kmeans.fit(dataset)
-        # for i in range(0, len(id_of_dataset), len(id_of_dataset) // 20):
-        #     # print("i:", i)
-        #     dataset = np.loadtxt(
-        #         self.file_path,
-        #         delimiter=",",
-        #         skiprows=i,
-        #         dtype=np.float32,
-        #         usecols=range(1, 71),
-        #         max_rows=len(id_of_dataset) // 20,
-        #     )
-        #     kmeans.partial_fit(dataset.astype(np.double))
 
-        # # save the kmeans model using joblib
-        # joblib.dump(kmeans, "./kmeans_model.joblib")
-        # get the centroids and assignments
-        # self.centroids = kmeans.cluster_centers_
-        # assignments = kmeans.labels_
-        # print("centroids shape:", self.centroids.shape)
-        # print("assignments shape:", assignments.shape)
+        del dataset
+
+        # convert the assignments to list
+        assignments = assignments.tolist()
+        # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
+        for i in range(batch_size, self.database_size, batch_size):
+            dataset = np.loadtxt(
+                self.file_path,
+                delimiter=",",
+                skiprows=i,
+                dtype=np.float32,
+                usecols=range(1, 71),
+                max_rows=batch_size if i + batch_size < self.database_size else None,
+            )
+            # find the nearest centroid to the query
+            top_centriods = [
+                self._get_top_centroids(vector, 1)[0] for vector in dataset
+            ]
+            # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
+            print("top_centriods shape:", len(top_centriods))
+            # print("top_centriods:", top_centriods)
+            # append the cluster id of each vector to the assignments list
+            # assignments = np.append(
+            #     assignments,
+            #     top_centriods,
+            # )
+            assignments.extend(top_centriods)
+            # delete dataset to free memory
+            del dataset
+        # assignments = np.array(assignments)
+
+        print("assignments len:", len(assignments))
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
             self.index[k].append(n)
+
+        del assignments
 
         # convert the index to numpy array
         self.index = np.array(self.index)
@@ -242,7 +256,14 @@ class VecDB:
             )
             for n, id in enumerate(cluster):
                 self.index[i][n][0] = id
-                self.index[i][n][1:] = dataset[id]
+                self.index[i][n][1:] = np.loadtxt(
+                    self.file_path,
+                    delimiter=",",
+                    skiprows=id,
+                    dtype=np.float32,
+                    usecols=range(1, 71),
+                    max_rows=1,
+                )
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
