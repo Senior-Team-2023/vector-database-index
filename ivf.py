@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA #TODO: use PCA to reduce the dimension of the vectors
 
 # from sklearn.cluster import MiniBatchKMeans
 # import joblib
@@ -28,7 +28,6 @@ class VecDB:
     ):
         # rows is a list of dictionary, each dictionary is a record
         with open(self.file_path, "a+") as fout:
-            # TODO: keep track of the last id in the database,
             # to start the new index from it, if the database is not empty,
             # and if the index algorithm requires it
             self.database_size += len(rows)
@@ -38,9 +37,9 @@ class VecDB:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
                 # convert row to string to write it to the database file
-                # TODO: Convert str(e) to bytes to reduce the size of the file
+                #NOTE: Convert str(e) to bytes to reduce the size of the file
                 # float should be 4 bytes, but str(e) is more than that
-                # TODO: try to take info from the embed, so you can use it to build the index
+                # NOTE: try to take info from the embed, so you can use it to build the index
                 row_str = f"{id}," + ",".join([str(e) for e in embed])
                 fout.write(f"{row_str}\n")
         # build index after inserting all records,
@@ -51,7 +50,6 @@ class VecDB:
     # Worst case implementation for retrieve
     # Because it is sequential search
     def retrive(self, query: Annotated[List[float], 70], top_k=5):
-        # TODO: for our implementation, we will use the index to retrieve the top_k records
         # then retrieve the actual records from the database
         scores = []
         # get the top_k centroids
@@ -159,7 +157,6 @@ class VecDB:
         return cosine_similarity.squeeze()
 
     def _build_index(self):
-        # TODO: build index for the database
         print("Building index...")
         # read the database file from csv file
         # id_of_dataset = np.loadtxt(
@@ -197,36 +194,37 @@ class VecDB:
             dataset, self.num_part, iter=self.iterations
         )
 
-        del dataset
-
-        # convert the assignments to list
-        assignments = assignments.tolist()
-        # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
-        for i in range(batch_size, self.database_size, batch_size):
-            dataset = np.loadtxt(
-                self.file_path,
-                delimiter=",",
-                skiprows=i,
-                dtype=np.float32,
-                usecols=range(1, 71),
-                max_rows=batch_size if i + batch_size < self.database_size else None,
-            )
-            # find the nearest centroid to the query
-            top_centriods = [
-                self._get_top_centroids(vector, 1)[0] for vector in dataset
-            ]
-            # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
-            print("top_centriods shape:", len(top_centriods))
-            # print("top_centriods:", top_centriods)
-            # append the cluster id of each vector to the assignments list
-            # assignments = np.append(
-            #     assignments,
-            #     top_centriods,
-            # )
-            assignments.extend(top_centriods)
-            # delete dataset to free memory
+        if self.database_size >= 10**6:
             del dataset
-        # assignments = np.array(assignments)
+
+            # convert the assignments to list
+            assignments = assignments.tolist()
+            # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
+            for i in range(batch_size, self.database_size, batch_size):
+                dataset = np.loadtxt(
+                    self.file_path,
+                    delimiter=",",
+                    skiprows=i,
+                    dtype=np.float32,
+                    usecols=range(1, 71),
+                    max_rows=batch_size if i + batch_size < self.database_size else None,
+                )
+                # find the nearest centroid to the query
+                top_centriods = [
+                    self._get_top_centroids(vector, 1)[0] for vector in dataset
+                ]
+                # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
+                print("top_centriods shape:", len(top_centriods))
+                # print("top_centriods:", top_centriods)
+                # append the cluster id of each vector to the assignments list
+                # assignments = np.append(
+                #     assignments,
+                #     top_centriods,
+                # )
+                assignments.extend(top_centriods)
+                # delete dataset to free memory
+                del dataset
+            # assignments = np.array(assignments)
 
         print("assignments len:", len(assignments))
         for n, k in enumerate(assignments):
@@ -244,26 +242,44 @@ class VecDB:
         #     with open(f"./index/index_{i}.csv", "w") as fout:
         #         for n in cluster:
         #             fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
-        for i in range(len(self.index)):
-            if len(self.index[i]) == 0:
-                continue
-            cluster = self.index[i]
-            self.index[i] = np.memmap(
-                f"./index/index_{i}.dta",
-                dtype="float32",
-                mode="w+",
-                shape=(len(cluster), 71),
-            )
-            for n, id in enumerate(cluster):
-                self.index[i][n][0] = id
-                self.index[i][n][1:] = np.loadtxt(
-                    self.file_path,
-                    delimiter=",",
-                    skiprows=id,
-                    dtype=np.float32,
-                    usecols=range(1, 71),
-                    max_rows=1,
+        if self.database_size >= 10**6:
+            for i in range(len(self.index)):
+                if len(self.index[i]) == 0:
+                    continue
+                cluster = self.index[i]
+                self.index[i] = np.memmap(
+                    f"./index/index_{i}.dta",
+                    dtype="float32",
+                    mode="w+",
+                    shape=(len(cluster), 71),
                 )
+                for n, id in enumerate(cluster):
+                    self.index[i][n][0] = id
+                    self.index[i][n][1:] = np.loadtxt(
+                        self.file_path,
+                        delimiter=",",
+                        skiprows=id,
+                        dtype=np.float32,
+                        usecols=range(1, 71),
+                        max_rows=1,
+                    ) #TODO: don't access the desk every time, find another way
+                del cluster
+        else:
+            for i in range(len(self.index)):
+                if len(self.index[i]) == 0:
+                    continue
+                cluster = self.index[i]
+                self.index[i] = np.memmap(
+                    f"./index/index_{i}.dta",
+                    dtype="float32",
+                    mode="w+",
+                    shape=(len(cluster), 71),
+                )
+                for n, id in enumerate(cluster):
+                    self.index[i][n][0] = id
+                    self.index[i][n][1:] = dataset[id]
+                del cluster
+            del dataset
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
