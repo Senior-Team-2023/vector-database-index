@@ -30,7 +30,7 @@ class VecDB:
             # and if the index algorithm requires it
             self.database_size += len(rows)
 
-            print("database_size:", self.database_size)
+            # print("database_size:", self.database_size)
             for row in rows:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
@@ -54,7 +54,7 @@ class VecDB:
         # get the top_k centroids
         k = int(4 * np.sqrt(self.num_part))
         top_centroids = self._get_top_centroids(query, k)
-        print("top_centroids:", top_centroids)
+        # print("top_centroids:", top_centroids)
         # load kmeans model
         # kmeans = joblib.load("./kmeans_model.joblib")
         # # get the assignments of the query to the centroids
@@ -83,7 +83,7 @@ class VecDB:
                     shape=(self.index[centroid].shape[0], 71),
                 )
                 # print number of vectors in this cluster
-                print(f"centroid {centroid} shape:", fp.shape)
+                # print(f"centroid {centroid} shape:", fp.shape)
             except FileNotFoundError:
                 continue
             id = fp[:, 0].astype(np.int32)
@@ -169,15 +169,15 @@ class VecDB:
             skiprows=0,
             dtype=np.float32,
             usecols=range(1, 71),
-            max_rows=min(10**6, int(self.database_size * 0.5))
-            if self.database_size >= 10**6
-            else None,
+            # max_rows=min(10**6, int(self.database_size * 0.5))
+            # if self.database_size >= 10**6
+            # else None, #TODO: try with and without max_rows
         )
         # print("dataset shape:", dataset.shape)
         # print("dataset[0]:", dataset[0])
         self.num_part = int(np.sqrt(self.database_size))
 
-        print("num_part:", self.num_part)
+        # print("num_part:", self.num_part)
 
         # using numpy
         self.index = np.empty(self.num_part, dtype=object)
