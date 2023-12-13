@@ -77,13 +77,13 @@ class VecDB:
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
             # try:
-            if self.index[centroid].shape[0] ==0:
+            if len(self.index[centroid]) ==0:
                     continue
             fp = np.memmap(
                 f"./index_{self.database_size}/index_{centroid}.dta",
                 dtype="float32",
                 mode="r",
-                shape=(self.index[centroid].shape[0], 71),
+                shape=(len(self.index[centroid]), 71),
             )
                 # print number of vectors in this cluster
             print(f"centroid {centroid} shape:", fp.shape)
