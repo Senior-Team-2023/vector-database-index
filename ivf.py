@@ -48,7 +48,7 @@ class VecDB:
         # build index after inserting all records,
         # whether on new records only or on the whole database
         if build_index:
-            self._build_index()
+            self.build_index()
 
     # Worst case implementation for retrieve
     # Because it is sequential search
@@ -161,7 +161,7 @@ class VecDB:
 
         return cosine_similarity.squeeze()
 
-    def _build_index(self):
+    def build_index(self):
         print("Building index...")
         # read the database file from csv file
         # id_of_dataset = np.loadtxt(
@@ -264,17 +264,17 @@ class VecDB:
                     cluster = self.index[c]
 
                     file_path = f"./index_{self.database_size}/index_{c}.dta"
+                    try:
+                        file_size = os.path.getsize(file_path)
 
-                    file_size = os.path.getsize(file_path)
+                        # Calculate the number of rows, knowing each row has 71 columns of type float32 (4 bytes each)
+                        num_columns = 71
 
-                    # Calculate the number of rows, knowing each row has 71 columns of type float32 (4 bytes each)
-                    num_columns = 71
+                        bytes_per_row = num_columns * 4  # float32 has 4 bytes
 
-                    bytes_per_row = num_columns * 4  # float32 has 4 bytes
-
-                    num_rows = file_size // bytes_per_row
-                    # print("num_rows:", num_rows)
-                    if num_rows != 0:
+                        num_rows = file_size // bytes_per_row
+                        # print("num_rows:", num_rows)
+                        # if num_rows != 0:
                         old_cluster = np.memmap(
                             file_path,
                             dtype="float32",
@@ -284,7 +284,7 @@ class VecDB:
                         old_cluster_copy = np.array(old_cluster)
                         old_cluster.flush()
                         del old_cluster
-                    else:
+                    except FileNotFoundError:
                         old_cluster = None
                         old_cluster_copy = None
                     new_shape = (len(cluster), num_columns)
