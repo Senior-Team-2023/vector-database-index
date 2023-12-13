@@ -188,17 +188,26 @@ class VecDB:
 
         # using numpy
         self.index = np.empty(self.num_part, dtype=object)
+        
         for i in range(self.num_part):
             self.index[i] = []
+        
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
         )
+        print("assignments len:", len(assignments))
+        for n, k in enumerate(assignments):
+            # n is the index of the vector
+            # k is the index of the cluster
+            self.index[k].append(n)
+
+        del assignments
 
         if self.database_size >= 10**6:
             del dataset
 
             # convert the assignments to list
-            assignments = assignments.tolist()
+            # assignments = assignments.tolist()
             # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
             for i in range(batch_size, self.database_size, batch_size):
                 dataset = np.loadtxt(
@@ -221,21 +230,28 @@ class VecDB:
                 #     assignments,
                 #     top_centriods,
                 # )
-                assignments.extend(top_centriods)
+                # assignments.extend(top_centriods)
+                for n, k in enumerate(top_centriods):
+                    # n is the index of the vector
+                    # k is the index of the cluster
+                    self.index[k].append(n + i)
+
+                del top_centriods
                 # delete dataset to free memory
                 del dataset
             # assignments = np.array(assignments)
 
-        print("assignments len:", len(assignments))
-        for n, k in enumerate(assignments):
-            # n is the index of the vector
-            # k is the index of the cluster
-            self.index[k].append(n)
+        # print("assignments len:", len(assignments))
+        # for n, k in enumerate(assignments):
+        #     # n is the index of the vector
+        #     # k is the index of the cluster
+        #     self.index[k].append(n)
 
-        del assignments
+        # del assignments
 
         # convert the index to numpy array
         self.index = np.array(self.index)
+        print("index shape:", self.index.shape)
         # self.index = np.array(self.index)
         # save the index clusters to .csv files
         # for i, cluster in enumerate(self.index):
@@ -253,17 +269,29 @@ class VecDB:
                     mode="w+",
                     shape=(len(cluster), 71),
                 )
+                minID = min(cluster)
+                maxID = max(cluster)
+                dataset = np.loadtxt(
+                    self.file_path,
+                    delimiter=",",
+                    skiprows=minID,
+                    dtype=np.float32,
+                    usecols=range(1, 71),
+                    max_rows=maxID - minID + 1,
+                )
                 for n, id in enumerate(cluster):
                     self.index[i][n][0] = id
-                    self.index[i][n][1:] = np.loadtxt(
-                        self.file_path,
-                        delimiter=",",
-                        skiprows=id,
-                        dtype=np.float32,
-                        usecols=range(1, 71),
-                        max_rows=1,
-                    ) #TODO: don't access the desk every time, find another way
+                    self.index[i][n][1:] = dataset[id - minID]
+                    # self.index[i][n][1:] = np.loadtxt(
+                    #     self.file_path,
+                    #     delimiter=",",
+                    #     skiprows=id,
+                    #     dtype=np.float32,
+                    #     usecols=range(1, 71),
+                    #     max_rows=1,
+                    # ) #TODO: don't access the desk every time, find another way
                 del cluster
+                del dataset
         else:
             for i in range(len(self.index)):
                 if len(self.index[i]) == 0:
