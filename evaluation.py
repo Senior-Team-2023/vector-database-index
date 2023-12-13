@@ -4,6 +4,8 @@ from worst_case_implementation import VecDBWorst
 # from lsh_random_projection import VecDBLSH
 # from buckets_hnsw import VecDB_buckets_HNSW
 from ivf import VecDB
+from lsh_probing import VecDB_lsh_probing
+
 # from OldTrials.lsh import VecDB_lsh
 # from one_level_lsh import VecDB_lsh_one_level
 
@@ -95,7 +97,8 @@ if __name__ == "__main__":
     # db = VecDBWorst()
     # db = VecDBLSH()
     # db = VecDB_buckets_HNSW()
-    db = VecDB()
+    # db = VecDB()
+    db = VecDB_lsh_probing()
     # db = VecDB_lsh_one_level()
     # db = VecDB_hnsw()
     # db = VecDB_OPQ32_IVF4096_HNSW_PQ32()
