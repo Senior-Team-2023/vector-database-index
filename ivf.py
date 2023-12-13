@@ -19,12 +19,15 @@ class VecDB:
         self.iterations = 32  # number of iterations for kmeans
         self.index = None
         self.file_path = file_path
-        self.database_size = 0
         if new_db:
+            self.database_size = 0
             # just open new file to delete the old one
             with open(self.file_path, "w") as fout:
                 # if you need to add any head to the file
                 pass
+        else:
+            # get the size of the database
+            self.database_size = sum(1 for line in open(self.file_path))
 
     def insert_records(
         self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
