@@ -78,7 +78,7 @@ class VecDB:
         for centroid in top_centroids:
             try:
                 fp = np.memmap(
-                    f"./index/index_{centroid}.dta",
+                    f"./index_{self.database_size}/index_{centroid}.dta",
                     dtype="float32",
                     mode="r",
                     shape=(self.index[centroid].shape[0], 71),
@@ -248,7 +248,7 @@ class VecDB:
                     continue
                 cluster = self.index[i]
                 self.index[i] = np.memmap(
-                    f"./index/index_{i}.dta",
+                    f"./index_{self.database_size}/index_{i}.dta",
                     dtype="float32",
                     mode="w+",
                     shape=(len(cluster), 71),
@@ -270,7 +270,7 @@ class VecDB:
                     continue
                 cluster = self.index[i]
                 self.index[i] = np.memmap(
-                    f"./index/index_{i}.dta",
+                    f"./index_{self.database_size}/index_{i}.dta",
                     dtype="float32",
                     mode="w+",
                     shape=(len(cluster), 71),
