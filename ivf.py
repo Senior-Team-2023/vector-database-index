@@ -1,8 +1,11 @@
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
-from sklearn.decomposition import PCA #TODO: use PCA to reduce the dimension of the vectors
+from sklearn.decomposition import (
+    PCA,
+)  # TODO: use PCA to reduce the dimension of the vectors
 import os
+
 # from sklearn.cluster import MiniBatchKMeans
 # import joblib
 
@@ -37,7 +40,7 @@ class VecDB:
                 # get id and embed from dictionary
                 id, embed = row["id"], row["embed"]
                 # convert row to string to write it to the database file
-                #NOTE: Convert str(e) to bytes to reduce the size of the file
+                # NOTE: Convert str(e) to bytes to reduce the size of the file
                 # float should be 4 bytes, but str(e) is more than that
                 # NOTE: try to take info from the embed, so you can use it to build the index
                 row_str = f"{id}," + ",".join([str(e) for e in embed])
@@ -77,15 +80,15 @@ class VecDB:
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
             # try:
-            if len(self.index[centroid]) ==0:
-                    continue
+            if len(self.index[centroid]) == 0:
+                continue
             fp = np.memmap(
                 f"./index_{self.database_size}/index_{centroid}.dta",
                 dtype="float32",
                 mode="r",
                 shape=(len(self.index[centroid]), 71),
             )
-                # print number of vectors in this cluster
+            # print number of vectors in this cluster
             print(f"centroid {centroid} shape:", fp.shape)
             # except FileNotFoundError:
             #     continue
@@ -166,8 +169,9 @@ class VecDB:
         # )
         # print("id_of_dataset shape:", id_of_dataset.shape)
         # batch_size = a5t ad eh mn al db awel mara
+        min_batch_size = 5 * 10**5
         batch_size = (
-            min(10**6, int(self.database_size * 0.5))
+            min(min_batch_size, int(self.database_size * 0.5))
             if self.database_size >= 10**6
             else self.database_size
         )
@@ -177,7 +181,7 @@ class VecDB:
             skiprows=0,
             dtype=np.float32,
             usecols=range(1, 71),
-            max_rows=min(10**6, int(self.database_size * 0.5))
+            max_rows=min(min_batch_size, int(self.database_size * 0.5))
             if self.database_size >= 10**6
             else None,
             # max_rows=10**6
@@ -190,10 +194,10 @@ class VecDB:
 
         # using numpy
         self.index = np.empty(self.num_part, dtype=object)
-        
+
         for i in range(self.num_part):
             self.index[i] = []
-        
+
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
         )
@@ -206,21 +210,21 @@ class VecDB:
         del assignments
 
         for i in range(len(self.index)):
-                if len(self.index[i]) == 0:
-                    continue
-                cluster = self.index[i]
-                new_cluster = np.memmap(
-                    f"./index_{self.database_size}/index_{i}.dta",
-                    dtype="float32",
-                    mode="w+",
-                    shape=(len(cluster), 71),
-                )
-                for n, id in enumerate(cluster):
-                    new_cluster[n][0] = id
-                    new_cluster[n][1:] = dataset[id]
-                del cluster
+            if len(self.index[i]) == 0:
+                continue
+            cluster = self.index[i]
+            new_cluster = np.memmap(
+                f"./index_{self.database_size}/index_{i}.dta",
+                dtype="float32",
+                mode="w+",
+                shape=(len(cluster), 71),
+            )
+            for n, id in enumerate(cluster):
+                new_cluster[n][0] = id
+                new_cluster[n][1:] = dataset[id]
+            new_cluster.flush()
+            # del cluster
         del dataset
-
 
         if self.database_size >= 10**6:
             # convert the assignments to list
@@ -233,7 +237,9 @@ class VecDB:
                     skiprows=i,
                     dtype=np.float32,
                     usecols=range(1, 71),
-                    max_rows=batch_size if i + batch_size < self.database_size else None,
+                    max_rows=batch_size
+                    if i + batch_size < self.database_size
+                    else None,
                 )
                 # find the nearest centroid to the query
                 top_centriods = [
@@ -252,7 +258,7 @@ class VecDB:
                     # n is the index of the vector
                     # k is the index of the cluster
                     self.index[k].append(n + i)
-                
+
                 # save the current IVF after each batch
                 for c in set(top_centriods):
                     cluster = self.index[c]
@@ -267,6 +273,7 @@ class VecDB:
                     bytes_per_row = num_columns * 4  # float32 has 4 bytes
 
                     num_rows = file_size // bytes_per_row
+                    # print("num_rows:", num_rows)
                     if num_rows != 0:
                         old_cluster = np.memmap(
                             file_path,
@@ -274,23 +281,29 @@ class VecDB:
                             mode="r",
                             shape=(num_rows, num_columns),
                         )
-                    else: 
+                        old_cluster_copy = np.array(old_cluster)
+                        old_cluster.flush()
+                        del old_cluster
+                    else:
                         old_cluster = None
+                        old_cluster_copy = None
                     new_shape = (len(cluster), num_columns)
                     # create a new cluster with the new shape
-                    new_cluster = np.memmap(file_path, dtype='float32', mode='w+', shape=new_shape)
+                    new_cluster = np.memmap(
+                        file_path, dtype="float32", mode="w+", shape=new_shape
+                    )
                     # update the cluster with the new vectors
-                    if old_cluster is not None:
-                        new_cluster[:num_rows] = old_cluster[:]
+                    if old_cluster_copy is not None:
+                        new_cluster[:num_rows] = old_cluster_copy[:]
 
                     for j in range(num_rows, len(cluster)):
                         new_cluster[j][0] = cluster[j]
                         new_cluster[j][1:] = dataset[cluster[j] - i]
-                    
+
                     new_cluster.flush()
-                    del old_cluster
-                    del new_cluster
-                    del cluster
+                    # del old_cluster
+                    # del new_cluster
+                    # del cluster
 
                 # NOTE:np.save(f"./index_{self.database_size}/index_{cen}.npy", self.index[cen])
 
