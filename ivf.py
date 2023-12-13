@@ -2,7 +2,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from typing import Dict, List, Annotated
 from sklearn.decomposition import PCA #TODO: use PCA to reduce the dimension of the vectors
-
+import os
 # from sklearn.cluster import MiniBatchKMeans
 # import joblib
 
@@ -76,17 +76,19 @@ class VecDB:
         # cosine_similarity_id = []
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
-            try:
-                fp = np.memmap(
-                    f"./index_{self.database_size}/index_{centroid}.dta",
-                    dtype="float32",
-                    mode="r",
-                    shape=(self.index[centroid].shape[0], 71),
-                )
+            # try:
+            if self.index[centroid].shape[0] ==0:
+                    continue
+            fp = np.memmap(
+                f"./index_{self.database_size}/index_{centroid}.dta",
+                dtype="float32",
+                mode="r",
+                shape=(self.index[centroid].shape[0], 71),
+            )
                 # print number of vectors in this cluster
-                # print(f"centroid {centroid} shape:", fp.shape)
-            except FileNotFoundError:
-                continue
+            print(f"centroid {centroid} shape:", fp.shape)
+            # except FileNotFoundError:
+            #     continue
             id = fp[:, 0].astype(np.int32)
             # print("id:", id)
             # print("id shape:", id.shape)
@@ -203,9 +205,24 @@ class VecDB:
 
         del assignments
 
-        if self.database_size >= 10**6:
-            del dataset
+        for i in range(len(self.index)):
+                if len(self.index[i]) == 0:
+                    continue
+                cluster = self.index[i]
+                new_cluster = np.memmap(
+                    f"./index_{self.database_size}/index_{i}.dta",
+                    dtype="float32",
+                    mode="w+",
+                    shape=(len(cluster), 71),
+                )
+                for n, id in enumerate(cluster):
+                    new_cluster[n][0] = id
+                    new_cluster[n][1:] = dataset[id]
+                del cluster
+        del dataset
 
+
+        if self.database_size >= 10**6:
             # convert the assignments to list
             # assignments = assignments.tolist()
             # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
@@ -235,6 +252,47 @@ class VecDB:
                     # n is the index of the vector
                     # k is the index of the cluster
                     self.index[k].append(n + i)
+                
+                # save the current IVF after each batch
+                for c in set(top_centriods):
+                    cluster = self.index[c]
+
+                    file_path = f"./index_{self.database_size}/index_{c}.dta"
+
+                    file_size = os.path.getsize(file_path)
+
+                    # Calculate the number of rows, knowing each row has 71 columns of type float32 (4 bytes each)
+                    num_columns = 71
+
+                    bytes_per_row = num_columns * 4  # float32 has 4 bytes
+
+                    num_rows = file_size // bytes_per_row
+                    if num_rows != 0:
+                        old_cluster = np.memmap(
+                            file_path,
+                            dtype="float32",
+                            mode="r",
+                            shape=(num_rows, num_columns),
+                        )
+                    else: 
+                        old_cluster = None
+                    new_shape = (len(cluster), num_columns)
+                    # create a new cluster with the new shape
+                    new_cluster = np.memmap(file_path, dtype='float32', mode='w+', shape=new_shape)
+                    # update the cluster with the new vectors
+                    if old_cluster is not None:
+                        new_cluster[:num_rows] = old_cluster[:]
+
+                    for j in range(num_rows, len(cluster)):
+                        new_cluster[j][0] = cluster[j]
+                        new_cluster[j][1:] = dataset[cluster[j] - i]
+                    
+                    new_cluster.flush()
+                    del old_cluster
+                    del new_cluster
+                    del cluster
+
+                # NOTE:np.save(f"./index_{self.database_size}/index_{cen}.npy", self.index[cen])
 
                 del top_centriods
                 # delete dataset to free memory
@@ -258,56 +316,56 @@ class VecDB:
         #     with open(f"./index/index_{i}.csv", "w") as fout:
         #         for n in cluster:
         #             fout.write(f"{id_of_dataset[n]},{','.join(map(str, dataset[n]))}\n")
-        if self.database_size >= 10**6:
-            for i in range(len(self.index)):
-                if len(self.index[i]) == 0:
-                    continue
-                cluster = self.index[i]
-                self.index[i] = np.memmap(
-                    f"./index_{self.database_size}/index_{i}.dta",
-                    dtype="float32",
-                    mode="w+",
-                    shape=(len(cluster), 71),
-                )
-                minID = min(cluster)
-                maxID = max(cluster)
-                dataset = np.loadtxt(
-                    self.file_path,
-                    delimiter=",",
-                    skiprows=minID,
-                    dtype=np.float32,
-                    usecols=range(1, 71),
-                    max_rows=maxID - minID + 1,
-                )
-                for n, id in enumerate(cluster):
-                    self.index[i][n][0] = id
-                    self.index[i][n][1:] = dataset[id - minID]
-                    # self.index[i][n][1:] = np.loadtxt(
-                    #     self.file_path,
-                    #     delimiter=",",
-                    #     skiprows=id,
-                    #     dtype=np.float32,
-                    #     usecols=range(1, 71),
-                    #     max_rows=1,
-                    # ) #TODO: don't access the desk every time, find another way
-                del cluster
-                del dataset
-        else:
-            for i in range(len(self.index)):
-                if len(self.index[i]) == 0:
-                    continue
-                cluster = self.index[i]
-                self.index[i] = np.memmap(
-                    f"./index_{self.database_size}/index_{i}.dta",
-                    dtype="float32",
-                    mode="w+",
-                    shape=(len(cluster), 71),
-                )
-                for n, id in enumerate(cluster):
-                    self.index[i][n][0] = id
-                    self.index[i][n][1:] = dataset[id]
-                del cluster
-            del dataset
+        # if self.database_size >= 10**6:
+        #     for i in range(len(self.index)):
+        #         if len(self.index[i]) == 0:
+        #             continue
+        #         cluster = self.index[i]
+        #         self.index[i] = np.memmap(
+        #             f"./index_{self.database_size}/index_{i}.dta",
+        #             dtype="float32",
+        #             mode="w+",
+        #             shape=(len(cluster), 71),
+        #         )
+        #         minID = min(cluster)
+        #         maxID = max(cluster)
+        #         dataset = np.loadtxt(
+        #             self.file_path,
+        #             delimiter=",",
+        #             skiprows=minID,
+        #             dtype=np.float32,
+        #             usecols=range(1, 71),
+        #             max_rows=maxID - minID + 1,
+        #         )
+        #         for n, id in enumerate(cluster):
+        #             self.index[i][n][0] = id
+        #             self.index[i][n][1:] = dataset[id - minID]
+        #             # self.index[i][n][1:] = np.loadtxt(
+        #             #     self.file_path,
+        #             #     delimiter=",",
+        #             #     skiprows=id,
+        #             #     dtype=np.float32,
+        #             #     usecols=range(1, 71),
+        #             #     max_rows=1,
+        #             # ) #TODO: don't access the desk every time, find another way
+        #         del cluster
+        #         del dataset
+        # else:
+        #     for i in range(len(self.index)):
+        #         if len(self.index[i]) == 0:
+        #             continue
+        #         cluster = self.index[i]
+        #         self.index[i] = np.memmap(
+        #             f"./index_{self.database_size}/index_{i}.dta",
+        #             dtype="float32",
+        #             mode="w+",
+        #             shape=(len(cluster), 71),
+        #         )
+        #         for n, id in enumerate(cluster):
+        #             self.index[i][n][0] = id
+        #             self.index[i][n][1:] = dataset[id]
+        #         del cluster
+        #     del dataset
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
