@@ -205,7 +205,7 @@ class VecDB:
         # )
         # print("id_of_dataset shape:", id_of_dataset.shape)
         # batch_size = a5t ad eh mn al db awel mara
-        min_batch_size = 5 * 10**5
+        min_batch_size = 20 * 10**5
         batch_size = (
             min(min_batch_size, int(self.database_size * 0.5))
             if self.database_size >= 10**6
@@ -357,7 +357,7 @@ class VecDB:
                         old_cluster_copy = np.array(old_cluster)
                         old_cluster.flush()
                         del old_cluster
-                        gc.collect()
+                        # gc.collect()
                     except FileNotFoundError:
                         old_cluster = None
                         old_cluster_copy = None
