@@ -9,3 +9,5 @@ Requirement already satisfied: memory-profiler in c:\users\peter\appdata\local\p
 Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)
 Requirement already satisfied: memory-profiler in c:\users\peter\appdata\local\programs\python\python311\lib\site-packages (0.61.0)
 Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)
+Requirement already satisfied: memory-profiler in c:\users\peter\appdata\local\programs\python\python311\lib\site-packages (0.61.0)
+Requirement already satisfied: psutil in c:\users\peter\appdata\roaming\python\python311\site-packages (from memory-profiler) (5.9.5)

@@ -26,31 +26,40 @@ class VecDB:
                 # if you need to add any head to the file
                 pass
         else:
-            # get the size of the database
-            self.database_size = sum(1 for line in open(self.file_path))
+            # load the centriods
+            self.centroids = np.load(f"./index_{self.database_size}/centroids.npy")
+            # load the length of each cluster
+            self.length_of_clusters = np.load(f"./index_{self.database_size}/length_of_clusters.npy")
+            # get the size of the database from the sum of the length of each cluster
+            self.database_size = np.sum(self.length_of_clusters)
+
 
     # def insert_records(
     #     self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
     # ):
-    def insert_records(self, rows, build_index=True):
+    def insert_records(self, vectors, build_index=True):
         # rows is a list of dictionary, each dictionary is a record
-        with open(self.file_path, "a+") as fout:
-            # to start the new index from it, if the database is not empty,
-            # and if the index algorithm requires it
-            self.database_size += rows.shape[0]
+        # with open(self.file_path, "a+") as fout:
+        #     # to start the new index from it, if the database is not empty,
+        #     # and if the index algorithm requires it
+        #     self.database_size += rows.shape[0]
 
-            # print("database_size:", self.database_size)
-            for i in range(rows.shape[0]):
-                # get id and embed from dictionary
-                # id, embed = row["id"], row["embed"]
-                id = i
-                embed = rows[i]
-                # convert row to string to write it to the database file
-                # NOTE: Convert str(e) to bytes to reduce the size of the file
-                # float should be 4 bytes, but str(e) is more than that
-                # NOTE: try to take info from the embed, so you can use it to build the index
-                row_str = f"{id}," + ",".join([str(e) for e in embed])
-                fout.write(f"{row_str}\n")
+        #     # print("database_size:", self.database_size)
+        #     for i in range(rows.shape[0]):
+        #         # get id and embed from dictionary
+        #         # id, embed = row["id"], row["embed"]
+        #         id = i
+        #         embed = rows[i]
+        #         # convert row to string to write it to the database file
+        #         # NOTE: Convert str(e) to bytes to reduce the size of the file
+        #         # float should be 4 bytes, but str(e) is more than that
+        #         # NOTE: try to take info from the embed, so you can use it to build the index
+        #         row_str = f"{id}," + ",".join([str(e) for e in embed])
+        #         fout.write(f"{row_str}\n")
+        self.database_size = vectors.shape[0]
+        fp = np.memmap(self.file_path, dtype=np.float32, mode="w+", shape=vectors.shape)
+        fp.flush()
+        # del fp
         # build index after inserting all records,
         # whether on new records only or on the whole database
         if build_index:
@@ -85,19 +94,19 @@ class VecDB:
         # cosine_similarity_id = []
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
-            # try:
-            if len(self.index[centroid]) == 0:
-                continue
-            fp = np.memmap(
-                f"./index_{self.database_size}/index_{centroid}.dta",
-                dtype="float32",
-                mode="r",
-                shape=(len(self.index[centroid]), 71),
-            )
-            # print number of vectors in this cluster
-            print(f"centroid {centroid} shape:", fp.shape)
-            # except FileNotFoundError:
+            try:
+            # if len(self.index[centroid]) == 0:
             #     continue
+                fp = np.memmap(
+                    f"./index_{self.database_size}/index_{centroid}.dta",
+                    dtype="float32",
+                    mode="r",
+                    shape=(self.length_of_clusters[centroid], 71),
+                )
+                # print number of vectors in this cluster
+                print(f"centroid {centroid} shape:", fp.shape)
+            except FileNotFoundError:
+                continue
             id = fp[:, 0].astype(np.int32)
             # print("id:", id)
             # print("id shape:", id.shape)
@@ -181,19 +190,25 @@ class VecDB:
             if self.database_size >= 10**6
             else self.database_size
         )
-        dataset = np.loadtxt(
+        # dataset = np.loadtxt(
+        #     self.file_path,
+        #     delimiter=",",
+        #     skiprows=0,
+        #     dtype=np.float32,
+        #     usecols=range(1, 71),
+        #     max_rows=min(min_batch_size, int(self.database_size * 0.5))
+        #     if self.database_size >= 10**6
+        #     else None,
+        #     # max_rows=10**6
+        #     # if self.database_size > 10**6
+        #     # else None,
+        # )
+        dataset = np.memmap(
             self.file_path,
-            delimiter=",",
-            skiprows=0,
-            dtype=np.float32,
-            usecols=range(1, 71),
-            max_rows=min(min_batch_size, int(self.database_size * 0.5))
-            if self.database_size >= 10**6
-            else None,
-            # max_rows=10**6
-            # if self.database_size > 10**6
-            # else None,
-        )
+            dtype="float32",
+            mode="r",
+            shape=(self.database_size, 71),
+        )[:, 1:]
         self.num_part = int(np.sqrt(self.database_size))
 
         # print("num_part:", self.num_part)
@@ -230,26 +245,27 @@ class VecDB:
                 new_cluster[n][1:] = dataset[id]
             new_cluster.flush()
             # del cluster
-        del dataset
+        # del dataset
 
         if self.database_size >= 10**6:
             # convert the assignments to list
             # assignments = assignments.tolist()
             # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
             for i in range(batch_size, self.database_size, batch_size):
-                dataset = np.loadtxt(
-                    self.file_path,
-                    delimiter=",",
-                    skiprows=i,
-                    dtype=np.float32,
-                    usecols=range(1, 71),
-                    max_rows=batch_size
-                    if i + batch_size < self.database_size
-                    else None,
-                )
+                # dataset = np.loadtxt(
+                #     self.file_path,
+                #     delimiter=",",
+                #     skiprows=i,
+                #     dtype=np.float32,
+                #     usecols=range(1, 71),
+                #     max_rows=batch_size
+                #     if i + batch_size < self.database_size
+                #     else None,
+                # )
+                
                 # find the nearest centroid to the query
                 top_centriods = [
-                    self._get_top_centroids(vector, 1)[0] for vector in dataset
+                    self._get_top_centroids(vector, 1)[0] for vector in dataset[i : i + batch_size]
                 ]
                 # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
                 print("top_centriods shape:", len(top_centriods))
@@ -329,7 +345,14 @@ class VecDB:
         # convert the index to numpy array
         self.index = np.array(self.index)
         print("index shape:", self.index.shape)
-        # self.index = np.array(self.index)
+        # length of each cluster
+        self.length_of_clusters = np.array([len(cluster) for cluster in self.index])
+        # store length of each cluster as memmap
+        np.save(f"./index_{self.database_size}/length_of_clusters.npy", self.length_of_clusters)
+        # store the centriods 
+        np.save(f"./index_{self.database_size}/centroids.npy", self.centroids)
+        
+            
         # save the index clusters to .csv files
         # for i, cluster in enumerate(self.index):
         #     with open(f"./index/index_{i}.csv", "w") as fout:
