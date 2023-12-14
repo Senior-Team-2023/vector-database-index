@@ -1,5 +1,7 @@
 import numpy as np
-from scipy.cluster.vq import kmeans2
+
+# from scipy.cluster.vq import kmeans2
+from faiss import Kmeans
 from typing import Dict, List, Annotated
 from sklearn.decomposition import (
     PCA,
@@ -17,7 +19,7 @@ class VecDB:
         self.centroids = None  # centroids of each partition
         # self.assignments = None  # assignments of each vector to a partition
         self.iterations = 32  # number of iterations for kmeans
-        
+
         self.file_path = file_path
         if new_db:
             self.database_size = 0
@@ -29,12 +31,18 @@ class VecDB:
             # load the centriods
             self.centroids = np.load(f"./index_{self.file_path}_centroids.npy")
             # load the length of each cluster
-            self.length_of_clusters = np.load(f"./index_{self.file_path}_length_of_clusters.npy")
-            # get the size of the database from the sum of the length of each cluster   
+            self.length_of_clusters = np.load(
+                f"./index_{self.file_path}_length_of_clusters.npy"
+            )
+            # get the size of the database from the sum of the length of each cluster
             self.database_size = np.sum(self.length_of_clusters)
-            # read database from file   
-            self.database = np.memmap(self.file_path, dtype=np.float32, mode="r", shape=(self.database_size, 71))
-
+            # read database from file
+            self.database = np.memmap(
+                self.file_path,
+                dtype=np.float32,
+                mode="r",
+                shape=(self.database_size, 71),
+            )
 
     # def insert_records(
     #     self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
@@ -59,11 +67,16 @@ class VecDB:
         #         row_str = f"{id}," + ",".join([str(e) for e in embed])
         #         fout.write(f"{row_str}\n")
         self.database_size = vectors.shape[0]
-        self.database = np.memmap(self.file_path, dtype=np.float32, mode="w+", shape=(vectors.shape[0], vectors.shape[1]+1))
-        self.database[:,0] = np.array([i for i in range(vectors.shape[0])])
-        self.database[:,1:] = vectors[:]
+        self.database = np.memmap(
+            self.file_path,
+            dtype=np.float32,
+            mode="w+",
+            shape=(vectors.shape[0], vectors.shape[1] + 1),
+        )
+        self.database[:, 0] = np.array([i for i in range(vectors.shape[0])])
+        self.database[:, 1:] = vectors[:]
         self.database.flush()
-        
+
         # del fp
         del vectors
         # build index after inserting all records,
@@ -101,8 +114,8 @@ class VecDB:
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
             try:
-            # if len(self.index[centroid]) == 0:
-            #     continue
+                # if len(self.index[centroid]) == 0:
+                #     continue
                 fp = np.memmap(
                     f"./index_{self.database_size}/index_{centroid}.dta",
                     dtype="float32",
@@ -215,7 +228,7 @@ class VecDB:
         #     mode="r",
         #     shape=(batch_size, 71),
         # )
-        dataset = self.database[:batch_size,1:]
+        dataset = self.database[:batch_size, 1:]
         self.num_part = int(np.sqrt(self.database_size))
 
         # print("num_part:", self.num_part)
@@ -226,10 +239,27 @@ class VecDB:
         for i in range(self.num_part):
             index[i] = []
 
-        (self.centroids, assignments) = kmeans2(
-            dataset, self.num_part, iter=self.iterations
+        # (self.centroids, assignments) = kmeans2(
+        #     dataset, self.num_part, iter=self.iterations
+        # )
+        kmeans = Kmeans(70, self.num_part, niter=20, verbose=True)
+        kmeans.train(
+            dataset,
+            init_centroids=dataset[
+                np.random.choice(
+                    dataset.shape[0],
+                    self.num_part,
+                    replace=dataset.shape[0] < self.num_part,
+                )
+            ],
         )
+        self.centroids = kmeans.centroids
+        assignments = kmeans.assign(dataset)[
+            1
+        ]  # returns a label to each row in that array
+
         print("assignments len:", len(assignments))
+        print("assignments:", assignments)
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
@@ -276,12 +306,15 @@ class VecDB:
                 #     offset=i,
                 #     shape=(batch_size, 71),
                 # )
-                dataset = self.database[i:i + batch_size,1:]
+                dataset = self.database[i : i + batch_size, 1:]
 
                 # find the nearest centroid to the query
-                top_centriods = [
-                    self._get_top_centroids(vector, 1)[0] for vector in dataset              
-                ]
+                # top_centriods = [
+                #     self._get_top_centroids(vector, 1)[0] for vector in dataset
+                # ]
+                top_centriods = kmeans.assign(dataset)[
+                    1
+                ]  # returns a label to each row in that array
                 # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
                 print("top_centriods shape:", len(top_centriods))
                 # print("top_centriods:", top_centriods)
@@ -364,11 +397,12 @@ class VecDB:
         self.length_of_clusters = np.array([len(cluster) for cluster in index])
         del index
         # store length of each cluster as memmap
-        np.save(f"./index_{self.file_path}_length_of_clusters.npy", self.length_of_clusters)
-        # store the centriods 
+        np.save(
+            f"./index_{self.file_path}_length_of_clusters.npy", self.length_of_clusters
+        )
+        # store the centriods
         np.save(f"./index_{self.file_path}_centroids.npy", self.centroids)
-        
-            
+
         # save the index clusters to .csv files
         # for i, cluster in enumerate(self.index):
         #     with open(f"./index/index_{i}.csv", "w") as fout:
