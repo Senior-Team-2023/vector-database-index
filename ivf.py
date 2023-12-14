@@ -1,5 +1,7 @@
 import numpy as np
-from scipy.cluster.vq import kmeans2
+
+# from scipy.cluster.vq import kmeans2
+from faiss import Kmeans
 from typing import Dict, List, Annotated
 from sklearn.decomposition import (
     PCA,
@@ -239,10 +241,27 @@ class VecDB:
         for i in range(self.num_part):
             index[i] = []
 
-        (self.centroids, assignments) = kmeans2(
-            dataset, self.num_part, iter=self.iterations
+        # (self.centroids, assignments) = kmeans2(
+        #     dataset, self.num_part, iter=self.iterations
+        # )
+        kmeans = Kmeans(70, self.num_part, niter=20, verbose=True)
+        kmeans.train(
+            dataset,
+            init_centroids=dataset[
+                np.random.choice(
+                    dataset.shape[0],
+                    self.num_part,
+                    replace=dataset.shape[0] < self.num_part,
+                )
+            ],
         )
+        self.centroids = kmeans.centroids
+        assignments = kmeans.assign(dataset)[
+            1
+        ]  # returns a label to each row in that array
+
         print("assignments len:", len(assignments))
+        print("assignments:", assignments)
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
@@ -293,9 +312,12 @@ class VecDB:
                 dataset = self.database[i : i + batch_size, 1:]
 
                 # find the nearest centroid to the query
-                top_centriods = [
-                    self._get_top_centroids(vector, 1)[0] for vector in dataset
-                ]
+                # top_centriods = [
+                #     self._get_top_centroids(vector, 1)[0] for vector in dataset
+                # ]
+                top_centriods = kmeans.assign(dataset)[
+                    1
+                ]  # returns a label to each row in that array
                 # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
                 print("top_centriods shape:", len(top_centriods))
                 # print("top_centriods:", top_centriods)
