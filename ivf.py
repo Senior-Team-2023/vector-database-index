@@ -57,9 +57,13 @@ class VecDB:
         #         row_str = f"{id}," + ",".join([str(e) for e in embed])
         #         fout.write(f"{row_str}\n")
         self.database_size = vectors.shape[0]
-        fp = np.memmap(self.file_path, dtype=np.float32, mode="w+", shape=vectors.shape)
-        fp.flush()
+        self.database = np.memmap(self.file_path, dtype=np.float32, mode="w+", shape=(vectors.shape[0], vectors.shape[1]+1))
+        self.database[:,0] = np.array([i for i in range(vectors.shape[0])])
+        self.database[:,1:] = vectors[:]
+        self.database.flush()
+        
         # del fp
+        del vectors
         # build index after inserting all records,
         # whether on new records only or on the whole database
         if build_index:
@@ -203,12 +207,13 @@ class VecDB:
         #     # if self.database_size > 10**6
         #     # else None,
         # )
-        dataset = np.memmap(
-            self.file_path,
-            dtype="float32",
-            mode="r",
-            shape=(self.database_size, 71),
-        )[:, 1:]
+        # dataset = np.memmap(
+        #     self.file_path,
+        #     dtype="float32",
+        #     mode="r",
+        #     shape=(batch_size, 71),
+        # )
+        dataset = self.database[:batch_size,1:]
         self.num_part = int(np.sqrt(self.database_size))
 
         # print("num_part:", self.num_part)
@@ -262,10 +267,18 @@ class VecDB:
                 #     if i + batch_size < self.database_size
                 #     else None,
                 # )
-                
+                # dataset = np.memmap(
+                #     self.file_path,
+                #     dtype="float32",
+                #     mode="r",
+                #     offset=i,
+                #     shape=(batch_size, 71),
+                # )
+                dataset = self.database[i:i + batch_size,1:]
+
                 # find the nearest centroid to the query
                 top_centriods = [
-                    self._get_top_centroids(vector, 1)[0] for vector in dataset[i : i + batch_size]
+                    self._get_top_centroids(vector, 1)[0] for vector in dataset              
                 ]
                 # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
                 print("top_centriods shape:", len(top_centriods))
@@ -331,7 +344,7 @@ class VecDB:
 
                 del top_centriods
                 # delete dataset to free memory
-                del dataset
+                # del dataset
             # assignments = np.array(assignments)
 
         # print("assignments len:", len(assignments))
