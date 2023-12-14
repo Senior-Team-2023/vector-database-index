@@ -165,6 +165,6 @@ cython_debug/
 *.pkl
 *.ids
 *.dta
-*npy
-*.zip
 *.crdownload
+*.npy
+*.zip
