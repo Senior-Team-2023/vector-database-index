@@ -28,6 +28,11 @@ class VecDB:
         else:
             # get the size of the database
             self.database_size = sum(1 for line in open(self.file_path))
+            # load the centriods
+            self.centroids = np.load(f"./index_{self.database_size}/centroids.npy")
+            # load the length of each cluster
+            self.length_of_clusters = np.load(f"./index_{self.database_size}/length_of_clusters.npy")
+
 
     # def insert_records(
     #     self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
@@ -85,19 +90,19 @@ class VecDB:
         # cosine_similarity_id = []
         cosine_similarity_id_total = np.array([]).reshape(0, 2)
         for centroid in top_centroids:
-            # try:
-            if len(self.index[centroid]) == 0:
-                continue
-            fp = np.memmap(
-                f"./index_{self.database_size}/index_{centroid}.dta",
-                dtype="float32",
-                mode="r",
-                shape=(len(self.index[centroid]), 71),
-            )
-            # print number of vectors in this cluster
-            print(f"centroid {centroid} shape:", fp.shape)
-            # except FileNotFoundError:
+            try:
+            # if len(self.index[centroid]) == 0:
             #     continue
+                fp = np.memmap(
+                    f"./index_{self.database_size}/index_{centroid}.dta",
+                    dtype="float32",
+                    mode="r",
+                    shape=(self.length_of_clusters[centroid], 71),
+                )
+                # print number of vectors in this cluster
+                print(f"centroid {centroid} shape:", fp.shape)
+            except FileNotFoundError:
+                continue
             id = fp[:, 0].astype(np.int32)
             # print("id:", id)
             # print("id shape:", id.shape)
@@ -329,7 +334,14 @@ class VecDB:
         # convert the index to numpy array
         self.index = np.array(self.index)
         print("index shape:", self.index.shape)
-        # self.index = np.array(self.index)
+        # length of each cluster
+        self.length_of_clusters = np.array([len(cluster) for cluster in self.index])
+        # store length of each cluster as memmap
+        np.save(f"./index_{self.database_size}/length_of_clusters.npy", self.length_of_clusters)
+        # store the centriods 
+        np.save(f"./index_{self.database_size}/centroids.npy", self.centroids)
+        
+            
         # save the index clusters to .csv files
         # for i, cluster in enumerate(self.index):
         #     with open(f"./index/index_{i}.csv", "w") as fout:
