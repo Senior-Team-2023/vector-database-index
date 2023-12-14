@@ -17,7 +17,7 @@ class VecDB:
         self.centroids = None  # centroids of each partition
         # self.assignments = None  # assignments of each vector to a partition
         self.iterations = 32  # number of iterations for kmeans
-        self.index = None
+        
         self.file_path = file_path
         if new_db:
             self.database_size = 0
@@ -29,9 +29,11 @@ class VecDB:
             # load the centriods
             self.centroids = np.load(f"./index_{self.file_path}_centroids.npy")
             # load the length of each cluster
-            self.length_of_clusters = np.load(f"./index_{self.file_path}/length_of_clusters.npy")
-            # get the size of the database from the sum of the length of each cluster
+            self.length_of_clusters = np.load(f"./index_{self.file_path}_length_of_clusters.npy")
+            # get the size of the database from the sum of the length of each cluster   
             self.database_size = np.sum(self.length_of_clusters)
+            # read database from file   
+            self.database = np.memmap(self.file_path, dtype=np.float32, mode="r", shape=(self.database_size, 71))
 
 
     # def insert_records(
@@ -219,10 +221,10 @@ class VecDB:
         # print("num_part:", self.num_part)
 
         # using numpy
-        self.index = np.empty(self.num_part, dtype=object)
+        index = np.empty(self.num_part, dtype=object)
 
         for i in range(self.num_part):
-            self.index[i] = []
+            index[i] = []
 
         (self.centroids, assignments) = kmeans2(
             dataset, self.num_part, iter=self.iterations
@@ -231,14 +233,14 @@ class VecDB:
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
-            self.index[k].append(n)
+            index[k].append(n)
 
         del assignments
 
-        for i in range(len(self.index)):
-            if len(self.index[i]) == 0:
+        for i in range(len(index)):
+            if len(index[i]) == 0:
                 continue
-            cluster = self.index[i]
+            cluster = index[i]
             new_cluster = np.memmap(
                 f"./index_{self.database_size}/index_{i}.dta",
                 dtype="float32",
@@ -292,11 +294,11 @@ class VecDB:
                 for n, k in enumerate(top_centriods):
                     # n is the index of the vector
                     # k is the index of the cluster
-                    self.index[k].append(n + i)
+                    index[k].append(n + i)
 
                 # save the current IVF after each batch
                 for c in set(top_centriods):
-                    cluster = self.index[c]
+                    cluster = index[c]
 
                     file_path = f"./index_{self.database_size}/index_{c}.dta"
                     try:
@@ -356,10 +358,11 @@ class VecDB:
         # del assignments
 
         # convert the index to numpy array
-        self.index = np.array(self.index)
-        print("index shape:", self.index.shape)
+        index = np.array(index)
+        # print("index shape:", self.index.shape)
         # length of each cluster
-        self.length_of_clusters = np.array([len(cluster) for cluster in self.index])
+        self.length_of_clusters = np.array([len(cluster) for cluster in index])
+        del index
         # store length of each cluster as memmap
         np.save(f"./index_{self.file_path}_length_of_clusters.npy", self.length_of_clusters)
         # store the centriods 
@@ -402,7 +405,7 @@ class VecDB:
         #             #     dtype=np.float32,
         #             #     usecols=range(1, 71),
         #             #     max_rows=1,
-        #             # ) #TODO: don't access the desk every time, find another way
+        #             # )
         #         del cluster
         #         del dataset
         # else:
