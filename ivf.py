@@ -27,9 +27,9 @@ class VecDB:
                 pass
         else:
             # load the centriods
-            self.centroids = np.load(f"./index_{self.database_size}/centroids.npy")
+            self.centroids = np.load(f"./index_{self.file_path}_centroids.npy")
             # load the length of each cluster
-            self.length_of_clusters = np.load(f"./index_{self.database_size}/length_of_clusters.npy")
+            self.length_of_clusters = np.load(f"./index_{self.file_path}/length_of_clusters.npy")
             # get the size of the database from the sum of the length of each cluster
             self.database_size = np.sum(self.length_of_clusters)
 
@@ -361,9 +361,9 @@ class VecDB:
         # length of each cluster
         self.length_of_clusters = np.array([len(cluster) for cluster in self.index])
         # store length of each cluster as memmap
-        np.save(f"./index_{self.database_size}/length_of_clusters.npy", self.length_of_clusters)
+        np.save(f"./index_{self.file_path}_length_of_clusters.npy", self.length_of_clusters)
         # store the centriods 
-        np.save(f"./index_{self.database_size}/centroids.npy", self.centroids)
+        np.save(f"./index_{self.file_path}_centroids.npy", self.centroids)
         
             
         # save the index clusters to .csv files
