@@ -29,19 +29,22 @@ class VecDB:
             # get the size of the database
             self.database_size = sum(1 for line in open(self.file_path))
 
-    def insert_records(
-        self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
-    ):
+    # def insert_records(
+    #     self, rows: List[Dict[int, Annotated[List[float], 70]]], build_index=True
+    # ):
+    def insert_records(self, rows, build_index=True):
         # rows is a list of dictionary, each dictionary is a record
         with open(self.file_path, "a+") as fout:
             # to start the new index from it, if the database is not empty,
             # and if the index algorithm requires it
-            self.database_size += len(rows)
+            self.database_size += rows.shape[0]
 
             # print("database_size:", self.database_size)
-            for row in rows:
+            for i in range(rows.shape[0]):
                 # get id and embed from dictionary
-                id, embed = row["id"], row["embed"]
+                # id, embed = row["id"], row["embed"]
+                id = i
+                embed = rows[i]
                 # convert row to string to write it to the database file
                 # NOTE: Convert str(e) to bytes to reduce the size of the file
                 # float should be 4 bytes, but str(e) is more than that
