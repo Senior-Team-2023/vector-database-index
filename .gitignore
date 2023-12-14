@@ -166,3 +166,4 @@ cython_debug/
 *.ids
 *.dta
 *npy
+*.zip
