@@ -3,9 +3,9 @@ import numpy as np
 # from scipy.cluster.vq import kmeans2
 from faiss import Kmeans
 from typing import Dict, List, Annotated
-from sklearn.decomposition import (
-    PCA,
-)  # TODO: use PCA to reduce the dimension of the vectors
+# from sklearn.decomposition import (
+#     PCA,
+# )  # TODO: use PCA to reduce the dimension of the vectors
 import os
 import gc
 
