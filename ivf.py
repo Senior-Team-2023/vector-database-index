@@ -199,6 +199,11 @@ class VecDB:
 
     def build_index(self):
         print("Building index...")
+        isExist = os.path.exists(f"./index_{self.database_size}")
+
+        if not isExist:
+            # Create a new directory because it does not exist
+            os.makedirs(f"./index_{self.database_size}")
         # read the database file from csv file
         # id_of_dataset = np.loadtxt(
         #     self.file_path, delimiter=",", skiprows=0, dtype=np.int32, usecols=0
@@ -208,7 +213,7 @@ class VecDB:
         min_batch_size = 20 * 10**5
         batch_size = (
             min(min_batch_size, int(self.database_size * 0.5))
-            if self.database_size >= 10**6
+            if self.database_size >= 5 * 10**6
             else self.database_size
         )
         # dataset = np.loadtxt(
@@ -244,7 +249,7 @@ class VecDB:
         # (self.centroids, assignments) = kmeans2(
         #     dataset, self.num_part, iter=self.iterations
         # )
-        kmeans = Kmeans(70, self.num_part, niter=20, verbose=True)
+        kmeans = Kmeans(70, self.num_part, niter=self.iterations, verbose=True)
         kmeans.train(
             dataset,
             init_centroids=dataset[
@@ -260,8 +265,8 @@ class VecDB:
             1
         ]  # returns a label to each row in that array
 
-        print("assignments len:", len(assignments))
-        print("assignments:", assignments)
+        # print("assignments len:", len(assignments))
+        # print("assignments:", assignments)
         for n, k in enumerate(assignments):
             # n is the index of the vector
             # k is the index of the cluster
@@ -287,7 +292,7 @@ class VecDB:
             # del cluster
         # del dataset
 
-        if self.database_size >= 10**6:
+        if self.database_size >= 5 * 10**6:
             # convert the assignments to list
             # assignments = assignments.tolist()
             # loop over the rest of the database to assign each vector to a cluster by appending the cluster id of this vector to the assignments list
@@ -319,7 +324,7 @@ class VecDB:
                     1
                 ]  # returns a label to each row in that array
                 # top_centriods = [np.argmax(self._vectorized_cal_score(self.centroids, vector)) for vector in dataset]
-                print("top_centriods shape:", len(top_centriods))
+                # print("top_centriods shape:", len(top_centriods))
                 # print("top_centriods:", top_centriods)
                 # append the cluster id of each vector to the assignments list
                 # assignments = np.append(
@@ -464,6 +469,7 @@ class VecDB:
         #             self.index[i][n][1:] = dataset[id]
         #         del cluster
         #     del dataset
+
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
