@@ -3,6 +3,7 @@ import numpy as np
 # from scipy.cluster.vq import kmeans2
 from faiss import Kmeans
 from typing import Dict, List, Annotated
+
 # from sklearn.decomposition import (
 #     PCA,
 # )  # TODO: use PCA to reduce the dimension of the vectors
@@ -210,12 +211,13 @@ class VecDB:
         # )
         # print("id_of_dataset shape:", id_of_dataset.shape)
         # batch_size = a5t ad eh mn al db awel mara
-        min_batch_size = 20 * 10**5
-        batch_size = (
-            min(min_batch_size, int(self.database_size * 0.5))
-            if self.database_size >= 5 * 10**6
-            else self.database_size
-        )
+        # min_batch_size = 20 * 10**5
+        batch_size = min(self.database_size // 4, 3 * 10**6)
+        # batch_size = (
+        #     min(min_batch_size, int(self.database_size * 0.5))
+        #     if self.database_size >= 5 * 10**6
+        #     else self.database_size
+        # )
         # dataset = np.loadtxt(
         #     self.file_path,
         #     delimiter=",",
@@ -469,7 +471,6 @@ class VecDB:
         #             self.index[i][n][1:] = dataset[id]
         #         del cluster
         #     del dataset
-
 
     def _get_top_centroids(self, query, k):
         # find the nearest centroids to the query
